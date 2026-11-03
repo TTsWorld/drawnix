@@ -23,6 +23,7 @@ import {
 } from '@plait/mind';
 import { Node, type Element as SlateElement } from 'slate';
 import { parseMarkdownToDrawnix } from '@plait-board/markdown-to-drawnix';
+
 export interface DrawnixDocument {
   type: 'drawnix';
   version: number;
@@ -183,12 +184,14 @@ function validateIncrementalOperations(
 }
 
 export function createMindmapDocument(markdown: string): DrawnixDocument {
-  if (!markdown.trim())
+  const trimmedMarkdown = markdown.trim();
+  if (!trimmedMarkdown) {
     throw mindmapError(
       'MINDMAP_INVALID_OPERATION',
       'A root topic is required.'
     );
-  const lines = markdown.trim().split(/\r?\n/);
+  }
+  const lines = trimmedMarkdown.split(/\r?\n/);
   if (!lines.some((line) => /^\s{0,3}#{1,6}\s+\S/.test(line))) {
     const first = lines[0]!.trim();
     const rootTopic =
@@ -265,8 +268,13 @@ export function applyMindmapOperations(
       for (const operation of operations) {
         if (operation.type === 'populate_empty') continue;
         fakeNodeWeakMap(board);
+        const element = requireMindElement(
+          board,
+          operation.type === 'insert_child'
+            ? operation.parentId
+            : operation.nodeId
+        );
         if (operation.type === 'set_note') {
-          const element = requireMindElement(board, operation.nodeId);
           // Keep metadata outside data: Plait rebuilds data when removing emojis.
           Transforms.setNode(
             board,
@@ -278,22 +286,16 @@ export function applyMindmapOperations(
         if (operation.type === 'set_topic') {
           MindTransforms.setTopic(
             board as PlaitMindBoard,
-            requireMindElement(board, operation.nodeId),
+            element,
             buildText(operation.topic) as SlateElement
           );
           continue;
         }
 
-        const target = requireMindElement(
-          board,
-          operation.type === 'insert_child'
-            ? operation.parentId
-            : operation.nodeId
-        );
         const path =
           operation.type === 'insert_child'
-            ? findNewChildNodePath(board, target)
-            : findNewSiblingNodePath(board, target);
+            ? findNewChildNodePath(board, element)
+            : findNewSiblingNodePath(board, element);
         MindTransforms.insertNodes(
           board,
           [createMindElement(operation.topic, {})],

@@ -7,7 +7,7 @@ Published package: `@ttsworld/drawnix`.
 Install the versioned GitHub release archive (no npm registry publication required):
 
 ```sh
-npm install https://github.com/TTsWorld/drawnix/releases/download/v0.4.0-notes.1/ttsworld-drawnix-0.4.0-notes.1.tgz
+npm install https://github.com/TTsWorld/drawnix/releases/download/v0.4.0-notes.2/ttsworld-drawnix-0.4.0-notes.2.tgz
 ```
 
 ## Run independently

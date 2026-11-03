@@ -6,7 +6,6 @@ import {
   getRectangleByElements,
   getSelectedElements,
   PlaitBoard,
-  RectangleClient,
   toHostPointFromViewBoxPoint,
   toScreenPointFromHostPoint,
 } from '@plait/core';
@@ -24,17 +23,19 @@ export const MindmapNoteButton = () => {
   const { t } = useI18n();
   const { setAppState } = useDrawnix();
   const selected = getSelectedElements(board);
-  if (selected.length !== 1 || !MindElement.isMindElement(board, selected[0]))
+  if (selected.length !== 1 || !MindElement.isMindElement(board, selected[0])) {
     return null;
+  }
   const node = selected[0];
+  const label = t(node.note ? 'notes.open' : 'notes.add');
   return (
     <ToolButton
       type="button"
       className="property-button"
       visible
       icon={NoteIcon}
-      title={t(node.note ? 'notes.open' : 'notes.add')}
-      aria-label={t(node.note ? 'notes.open' : 'notes.add')}
+      title={label}
+      aria-label={label}
       onClick={() =>
         setAppState((state) => ({ ...state, openNoteId: node.id }))
       }
@@ -78,16 +79,19 @@ export const MindmapNotes = () => {
       setBadges(
         nodes.map((element) => {
           const rect = getRectangleByElements(board, [element], false);
-          const [, end] = RectangleClient.getPoints(rect);
-          const point = toScreenPointFromHostPoint(
+          const hostPoint = toHostPointFromViewBoxPoint(board, [
+            rect.x + rect.width,
+            rect.y,
+          ]);
+          const [screenX, screenY] = toScreenPointFromHostPoint(
             board,
-            toHostPointFromViewBoxPoint(board, [end[0], rect.y])
+            hostPoint
           );
           return {
             id: element.id,
             topic: Node.string(element.data.topic),
-            x: point[0] - bounds.left + 5,
-            y: point[1] - bounds.top - 8,
+            x: screenX - bounds.left + 5,
+            y: screenY - bounds.top - 8,
           };
         })
       );
