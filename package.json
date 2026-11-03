@@ -13,7 +13,7 @@
     "dev:notes": "vite --config apps/web/vite.config.ts",
     "test:notes": "vitest run --config vitest.config.ts",
     "typecheck:notes": "tsc --noEmit -p packages/drawnix/tsconfig.package.json",
-    "build:package": "node scripts/build-notes-package.mjs"
+    "build:package": "vite build --config packages/drawnix/vite.config.ts"
   },
   "private": true,
   "dependencies": {

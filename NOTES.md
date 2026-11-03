@@ -7,7 +7,7 @@ Published package: `@ttsworld/drawnix`.
 Install the versioned GitHub release archive (no npm registry publication required):
 
 ```sh
-npm install https://github.com/TTsWorld/drawnix/releases/download/v0.4.0-notes.5/ttsworld-drawnix-0.4.0-notes.5.tgz
+npm install https://github.com/TTsWorld/drawnix/releases/download/v0.4.0-notes.6/ttsworld-drawnix-0.4.0-notes.6.tgz
 ```
 
 ## Run independently
@@ -85,6 +85,10 @@ npm run typecheck:notes
 npm run build:package
 npm pack ./dist/drawnix --pack-destination dist
 ```
+
+Both the standalone package build and the Nx library build emit `README.md`,
+`LICENSE`, and `LICENSES/stair-Apache-2.0.txt`. Check that these files are present
+in the final archive before publishing, including after building the web app.
 
 Use the versioned package archive for consumers. Do not depend on a sibling
 checkout or a developer's `npm link`. The fork keeps Plait as a dependency,

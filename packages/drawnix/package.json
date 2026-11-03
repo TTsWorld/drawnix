@@ -1,6 +1,6 @@
 {
   "name": "@ttsworld/drawnix",
-  "version": "0.4.0-notes.5",
+  "version": "0.4.0-notes.6",
   "main": "./index.js",
   "types": "./index.d.ts",
   "private": false,

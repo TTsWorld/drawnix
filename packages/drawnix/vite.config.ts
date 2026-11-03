@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import dts from 'vite-plugin-dts';
+import { readFileSync } from 'node:fs';
 import * as path from 'path';
 import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
 
@@ -17,6 +18,24 @@ export default defineConfig({
       tsconfigPath: path.join(__dirname, 'tsconfig.package.json'),
       pathsToAliases: false,
     }),
+    {
+      name: 'drawnix-package-files',
+      apply: 'build',
+      generateBundle() {
+        for (const [fileName, sourcePath] of [
+          ['package.json', 'packages/drawnix/package.json'],
+          ['README.md', 'NOTES.md'],
+          ['LICENSE', 'LICENSE'],
+          ['LICENSES/stair-Apache-2.0.txt', 'LICENSES/stair-Apache-2.0.txt'],
+        ]) {
+          this.emitFile({
+            type: 'asset',
+            fileName,
+            source: readFileSync(path.resolve(__dirname, '../..', sourcePath)),
+          });
+        }
+      },
+    },
   ],
 
   // Uncomment this if you are using workers.
