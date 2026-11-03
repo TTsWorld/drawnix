@@ -7,7 +7,7 @@ Published package: `@ttsworld/drawnix`.
 Install the versioned GitHub release archive (no npm registry publication required):
 
 ```sh
-npm install https://github.com/TTsWorld/drawnix/releases/download/v0.4.0-notes.3/ttsworld-drawnix-0.4.0-notes.3.tgz
+npm install https://github.com/TTsWorld/drawnix/releases/download/v0.4.0-notes.4/ttsworld-drawnix-0.4.0-notes.4.tgz
 ```
 
 ## Run independently
@@ -23,7 +23,8 @@ to nodes with notes. Click it to reopen the panel. Notes use plain multiline
 text. Changes participate in the board's undo/redo history. Continuous typing
 in one note is one undo step; leaving the input, switching nodes, undo/redo,
 or another document edit starts a new step. Copy, cut, and paste in the panel
-operate on note text. The standalone
+operate on note text. Input updates immediately; note icons refresh after
+Plait has updated the node layout references. The standalone
 web app stores the document locally; the app menu exports and imports
 `.drawnix` files including notes.
 

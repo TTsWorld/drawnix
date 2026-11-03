@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import { useBoard } from '@plait-board/react-board';
+import { useContext, useEffect, useRef, useState } from 'react';
+import { BoardContext, useBoard } from '@plait-board/react-board';
 import {
   ATTACHED_ELEMENT_CLASS_NAME,
   findElements,
+  FLUSHING,
   getRectangleByElements,
   getSelectedElements,
   PlaitBoard,
@@ -48,6 +49,7 @@ export const MindmapNoteButton = () => {
 
 export const MindmapNotes = () => {
   const board = useBoard();
+  const boardVersion = useContext(BoardContext)?.v;
   const { t } = useI18n();
   const { appState, setAppState } = useDrawnix();
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -75,10 +77,13 @@ export const MindmapNotes = () => {
       setAppState((state) => ({ ...state, openNoteId: null }));
   }, [node?.id, appState.openNoteId, setAppState]);
 
+  // react-board advances its version after Plait refreshes layout references.
+  // A local draft render can see new children before those references exist.
   useEffect(() => {
     const host = PlaitBoard.getBoardContainer(board).closest('.drawnix');
     if (!host) return;
     const updatePositions = () => {
+      if (FLUSHING.get(board)) return;
       const bounds = host.getBoundingClientRect();
       const nodes = findElements(board, {
         match: (element) =>
@@ -111,7 +116,7 @@ export const MindmapNotes = () => {
     const observer = new ResizeObserver(updatePositions);
     observer.observe(host);
     return () => observer.disconnect();
-  }, [board, board.children, board.viewport]);
+  }, [board, boardVersion]);
 
   const close = () => {
     setAppState((state) => ({ ...state, openNoteId: null }));

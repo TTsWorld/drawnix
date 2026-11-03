@@ -12,20 +12,26 @@ import { BoardContext } from '@plait-board/react-board';
 import {
   createTestingBoard,
   fakeNodeWeakMap,
+  findElements,
   ListRender,
   PlaitBoard,
   PlaitPointerType,
   withHistory,
 } from '@plait/core';
+import {
+  getRectangleByNode,
+  MIND_ELEMENT_TO_NODE,
+  MindElement,
+  type MindNode,
+} from '@plait/mind';
 import { createDrawnixEditor, createMindmapDocument } from '../editor';
 import { DrawnixContext, type DrawnixState } from '../hooks/use-drawnix';
 import { I18nProvider } from '../i18n';
 import { MindmapNotes } from './mindmap-notes';
 
-// Geometry is not available in jsdom; document operations and React events are real.
+// jsdom has no screen coordinates; keep Plait's geometry/reference lookup real.
 vi.mock('@plait/core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@plait/core')>()),
-  getRectangleByElements: () => ({ x: 0, y: 0, width: 100, height: 40 }),
   toHostPointFromViewBoxPoint: (_board: PlaitBoard, point: number[]) => point,
   toScreenPointFromHostPoint: (_board: PlaitBoard, point: number[]) => point,
 }));
@@ -51,7 +57,29 @@ async function setup(note = '') {
   const document = createMindmapDocument('# Original\n## Child');
   if (note) document.elements[0].note = note;
   const board = createTestingBoard([withHistory], document.elements);
-  fakeNodeWeakMap(board);
+  // ListRender refreshes layout references in onChange, before the React
+  // context notification in afterChange. New node objects have no layout yet.
+  board.onChange = () => {
+    fakeNodeWeakMap(board);
+    const elements = findElements(board, {
+      match: (element) => MindElement.isMindElement(board, element),
+      recursion: () => true,
+    }) as MindElement[];
+    for (const element of elements) {
+      MIND_ELEMENT_TO_NODE.set(element, {
+        origin: element,
+        x: 100,
+        y: 100,
+        width: 100,
+        height: 40,
+        hGap: 0,
+        vGap: 0,
+      } as MindNode);
+    }
+  };
+  board.onChange();
+  board.getRectangle = (element) =>
+    getRectangleByNode(MindElement.getNode(element as MindElement));
   const editor = createDrawnixEditor(board);
   const id = editor.readMindmap()[0].id;
   const host = window.document.createElement('div');
@@ -75,7 +103,6 @@ async function setup(note = '') {
     useEffect(() => {
       // Match react-board's asynchronous notification after a Plait operation.
       board.afterChange = () => {
-        fakeNodeWeakMap(board);
         setContext((value) => ({ ...value, v: value.v + 1 }));
       };
     }, []);
@@ -134,6 +161,37 @@ describe('mind-map note editing', () => {
     });
     expect(input.selectionStart).toBe(4);
     expect(editor.readMindmap()[0].note).toBe('abcXdef');
+    expect(screen.getByRole('textbox')).toBe(input);
+  });
+
+  it('refreshes badges after adding, deleting and restoring the first note', async () => {
+    const { input, board } = await setup();
+    expect(
+      screen.queryByRole('button', { name: '打开备注: Original' })
+    ).toBeNull();
+
+    fireEvent.input(input, { target: { value: 'First note' } });
+    expect(input.value).toBe('First note');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const badge = screen.getByRole('button', { name: '打开备注: Original' });
+    expect(badge.style.left).toBe('205px');
+    expect(badge.style.top).toBe('92px');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '删除备注' }));
+    });
+    expect(
+      screen.queryByRole('button', { name: '打开备注: Original' })
+    ).toBeNull();
+    await act(async () => {
+      board.undo();
+    });
+    expect(input.value).toBe('First note');
+    expect(
+      screen.getByRole('button', { name: '打开备注: Original' })
+    ).toBeTruthy();
   });
 
   it('undoes a long continuous edit without discarding earlier board history', async () => {
