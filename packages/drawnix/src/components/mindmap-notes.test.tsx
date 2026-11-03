@@ -10,6 +10,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BoardContext } from '@plait-board/react-board';
 import {
+  BoardTransforms,
   createTestingBoard,
   fakeNodeWeakMap,
   findElements,
@@ -192,6 +193,33 @@ describe('mind-map note editing', () => {
     expect(
       screen.getByRole('button', { name: '打开备注: Original' })
     ).toBeTruthy();
+  });
+
+  it('shows loaded notes after the external document fitViewport notification', async () => {
+    const { board } = await setup();
+    const loaded = createMindmapDocument('# Loaded document');
+    loaded.elements[0].note = 'Saved note';
+    board.options.hideScrollbar = true;
+    vi.spyOn(
+      PlaitBoard.getBoardContainer(board),
+      'getBoundingClientRect'
+    ).mockReturnValue(new DOMRect(0, 0, 800, 600));
+
+    await act(async () => {
+      // Match Wrapper's value replacement: refresh layout, then fitViewport.
+      board.children = loaded.elements;
+      board.onChange();
+      BoardTransforms.fitViewport(board);
+      expect(board.operations.some((op) => op.type === 'set_viewport')).toBe(
+        true
+      );
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: '打开备注: Loaded document' })
+    );
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
+      'Saved note'
+    );
   });
 
   it('undoes a long continuous edit without discarding earlier board history', async () => {
