@@ -203,9 +203,17 @@ export const MindmapNotes = () => {
             }}
             onChange={(event) => {
               const value = event.target.value;
+              // Agent edits can replace or move the node before React renders again.
+              const currentNode = findElements(board, {
+                match: (element) =>
+                  element.id === node.id &&
+                  MindElement.isMindElement(board, element),
+                recursion: () => true,
+              })[0] as MindElement | undefined;
+              if (!currentNode) return;
               // Plait notifies React asynchronously; update the input now to keep its caret.
               setDraft(value);
-              if (value === note) return;
+              if (value === (currentNode.note || '')) return;
 
               const previousBatch =
                 board.history.undos[board.history.undos.length - 1];
@@ -222,7 +230,7 @@ export const MindmapNotes = () => {
                 Transforms.setNode(
                   board,
                   { note: value || undefined },
-                  PlaitBoard.findPath(board, node)
+                  PlaitBoard.findPath(board, currentNode)
                 );
               });
               const batch = board.history.undos[board.history.undos.length - 1];

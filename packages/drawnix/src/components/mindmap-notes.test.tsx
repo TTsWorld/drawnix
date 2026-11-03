@@ -17,6 +17,7 @@ import {
   ListRender,
   PlaitBoard,
   PlaitPointerType,
+  Transforms,
   withHistory,
 } from '@plait/core';
 import {
@@ -316,6 +317,94 @@ describe('mind-map note editing', () => {
       board.undo();
     });
     expect(input.value).toBe('User edit');
+  });
+
+  it('keeps typing on the same node when an Agent batch changes its position before React commits', async () => {
+    const { editor, board, id } = await setup();
+    await act(async () => {
+      editor.updateMindmap([
+        { type: 'insert_child', parentId: id, topic: 'Editing' },
+      ]);
+    });
+    const [preceding, edited] = editor.readMindmap()[0].children;
+    await act(async () => {
+      editor.updateMindmap([
+        { type: 'set_note', nodeId: edited.id, note: 'Original note' },
+      ]);
+    });
+    fireEvent.click(screen.getByRole('button', { name: '打开备注: Editing' }));
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement;
+
+    await act(async () => {
+      editor.updateMindmap([
+        { type: 'set_topic', nodeId: edited.id, topic: 'Renamed' },
+        { type: 'insert_sibling', nodeId: preceding.id, topic: 'Inserted' },
+      ]);
+      // Plait finishes the operation before React commits the new context.
+      await Promise.resolve();
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        'value'
+      )!.set!.call(input, 'Following user edit');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    expect(editor.readMindmap()[0].children).toEqual([
+      preceding,
+      expect.objectContaining({ topic: 'Inserted', children: [] }),
+      { ...edited, topic: 'Renamed', note: 'Following user edit' },
+    ]);
+    expect(editor.readMindmap()[0].children[1].note).toBeUndefined();
+    expect(input.value).toBe('Following user edit');
+    await act(async () => {
+      board.undo();
+    });
+    expect(input.value).toBe('Original note');
+    expect(editor.readMindmap()[0].children[2].topic).toBe('Renamed');
+    await act(async () => {
+      board.undo();
+    });
+    expect(editor.readMindmap()[0].children).toEqual([
+      preceding,
+      { ...edited, note: 'Original note' },
+    ]);
+    await act(async () => {
+      board.redo();
+      board.redo();
+    });
+    expect(editor.readMindmap()[0].children[2].note).toBe(
+      'Following user edit'
+    );
+    expect(editor.readMindmap()[0].children[1].note).toBeUndefined();
+  });
+
+  it('ignores late input when the edited node has been removed', async () => {
+    const { input, editor, board } = await setup('Original note');
+    await act(async () => {
+      Transforms.insertNode(
+        board,
+        createMindmapDocument('# Other node').elements[0],
+        [1]
+      );
+    });
+    await act(async () => {
+      Transforms.removeNode(board, [0]);
+      await Promise.resolve();
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        'value'
+      )!.set!.call(input, 'Late user edit');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(editor.readMindmap()).toEqual([
+      expect.objectContaining({ topic: 'Other node' }),
+    ]);
+    expect(editor.readMindmap()[0].note).toBeUndefined();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    await act(async () => {
+      board.undo();
+    });
+    expect(editor.readMindmap()[0].note).toBe('Original note');
   });
 
   it('starts a new edit when switching between node notes', async () => {
