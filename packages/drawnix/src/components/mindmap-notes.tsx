@@ -6,8 +6,11 @@ import {
   getRectangleByElements,
   getSelectedElements,
   PlaitBoard,
+  PlaitHistoryBoard,
+  type PlaitOperation,
   toHostPointFromViewBoxPoint,
   toScreenPointFromHostPoint,
+  Transforms,
 } from '@plait/core';
 import { MindElement } from '@plait/mind';
 import { Node } from 'slate';
@@ -48,6 +51,7 @@ export const MindmapNotes = () => {
   const { t } = useI18n();
   const { appState, setAppState } = useDrawnix();
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const lastInputOperation = useRef<PlaitOperation | null>(null);
   const [badges, setBadges] = useState<
     Array<{ id: string; topic: string; x: number; y: number }>
   >([]);
@@ -57,8 +61,15 @@ export const MindmapNotes = () => {
       MindElement.isMindElement(board, element),
     recursion: () => true,
   })[0] as MindElement | undefined;
+  const note = typeof node?.note === 'string' ? node.note : '';
+  const [draft, setDraft] = useState(note);
 
   useEffect(() => {
+    setDraft(note);
+  }, [node?.id, note]);
+
+  useEffect(() => {
+    lastInputOperation.current = null;
     if (node) textarea.current?.focus();
     else if (appState.openNoteId)
       setAppState((state) => ({ ...state, openNoteId: null }));
@@ -136,6 +147,9 @@ export const MindmapNotes = () => {
           aria-label={t('notes.title')}
           onPointerDown={(event) => event.stopPropagation()}
           onWheel={(event) => event.stopPropagation()}
+          onCopy={(event) => event.stopPropagation()}
+          onCut={(event) => event.stopPropagation()}
+          onPaste={(event) => event.stopPropagation()}
           onKeyDown={(event) => {
             event.stopPropagation();
             if (event.nativeEvent.isComposing) return;
@@ -148,6 +162,7 @@ export const MindmapNotes = () => {
               event.key.toLowerCase() === 'z'
             ) {
               event.preventDefault();
+              lastInputOperation.current = null;
               if (event.shiftKey) board.redo();
               else board.undo();
             }
@@ -176,13 +191,50 @@ export const MindmapNotes = () => {
           <textarea
             ref={textarea}
             id={`drawnix-note-${node.id}`}
-            value={typeof node.note === 'string' ? node.note : ''}
+            value={draft}
             placeholder={t('notes.placeholder')}
-            onChange={(event) =>
-              applyMindmapOperations(board, [
-                { type: 'set_note', nodeId: node.id, note: event.target.value },
-              ])
-            }
+            onBlur={() => {
+              lastInputOperation.current = null;
+            }}
+            onChange={(event) => {
+              const value = event.target.value;
+              // Plait notifies React asynchronously; update the input now to keep its caret.
+              setDraft(value);
+              if (value === note) return;
+
+              const previousBatch =
+                board.history.undos[board.history.undos.length - 1];
+              const previousOperation =
+                previousBatch?.[previousBatch.length - 1];
+              const shouldMerge =
+                lastInputOperation.current &&
+                previousOperation === lastInputOperation.current &&
+                board.history.redos.length === 0;
+              const updateHistory = shouldMerge
+                ? PlaitHistoryBoard.withMerging
+                : PlaitHistoryBoard.withNewBatch;
+              updateHistory(board, () => {
+                Transforms.setNode(
+                  board,
+                  { note: value || undefined },
+                  PlaitBoard.findPath(board, node)
+                );
+              });
+              const batch = board.history.undos[board.history.undos.length - 1];
+              const operation = batch[batch.length - 1];
+              if (
+                shouldMerge &&
+                previousOperation?.type === 'set_node' &&
+                operation.type === 'set_node'
+              ) {
+                // Notes store full strings; retain only the first and latest values.
+                batch.splice(batch.length - 2, 2, {
+                  ...previousOperation,
+                  newProperties: operation.newProperties,
+                });
+              }
+              lastInputOperation.current = batch[batch.length - 1];
+            }}
           />
           <footer>
             <span>{t('notes.hint')}</span>

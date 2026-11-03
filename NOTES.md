@@ -7,7 +7,7 @@ Published package: `@ttsworld/drawnix`.
 Install the versioned GitHub release archive (no npm registry publication required):
 
 ```sh
-npm install https://github.com/TTsWorld/drawnix/releases/download/v0.4.0-notes.2/ttsworld-drawnix-0.4.0-notes.2.tgz
+npm install https://github.com/TTsWorld/drawnix/releases/download/v0.4.0-notes.3/ttsworld-drawnix-0.4.0-notes.3.tgz
 ```
 
 ## Run independently
@@ -20,7 +20,10 @@ npm run dev:notes -- --host 127.0.0.1
 Open the printed address. Create or select a mind-map node, choose **Add note**
 in its floating toolbar, and type in the side panel. A note icon appears next
 to nodes with notes. Click it to reopen the panel. Notes use plain multiline
-text. Changes participate in the board's undo/redo history. The standalone
+text. Changes participate in the board's undo/redo history. Continuous typing
+in one note is one undo step; leaving the input, switching nodes, undo/redo,
+or another document edit starts a new step. Copy, cut, and paste in the panel
+operate on note text. The standalone
 web app stores the document locally; the app menu exports and imports
 `.drawnix` files including notes.
 
