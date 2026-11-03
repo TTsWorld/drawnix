@@ -5,6 +5,15 @@ export type Language = 'zh' | 'en' | 'ru' | 'ar' | 'vi';
 
 // Define translation keys and their corresponding values
 export interface Translations {
+  'notes.add': string;
+  'notes.open': string;
+  'notes.title': string;
+  'notes.close': string;
+  'notes.content': string;
+  'notes.placeholder': string;
+  'notes.hint': string;
+  'notes.remove': string;
+
   // Toolbar items
   'toolbar.hand': string;
   'toolbar.selection': string;

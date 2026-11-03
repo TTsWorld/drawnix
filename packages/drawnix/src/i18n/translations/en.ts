@@ -1,6 +1,15 @@
 import { Translations } from '../types';
 
 const enTranslations: Translations = {
+  'notes.add': "Add note",
+  'notes.open': "Open note",
+  'notes.title': "Node note",
+  'notes.close': "Close note",
+  'notes.content': "Note",
+  'notes.placeholder': "Keep the key point on the node. Write details here…",
+  'notes.hint': "Stored with this node",
+  'notes.remove': "Remove note",
+
   // Toolbar items
   'toolbar.hand': 'Hand — H',
   'toolbar.selection': 'Selection — V',

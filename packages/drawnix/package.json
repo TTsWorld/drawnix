@@ -1,6 +1,6 @@
 {
-  "name": "@drawnix/drawnix",
-  "version": "0.4.0-2",
+  "name": "@ttsworld/drawnix",
+  "version": "0.4.0-notes.1",
   "main": "./index.js",
   "types": "./index.d.ts",
   "private": false,
@@ -9,14 +9,56 @@
     "mobile-detect": "^1.4.5",
     "open-color": "^1.9.1",
     "@plait-board/mermaid-to-drawnix": "^0.0.7",
-    "@plait-board/markdown-to-drawnix": "^0.0.7",
-    "laser-pen": "^1.0.1"
+    "@plait-board/markdown-to-drawnix": "0.0.8",
+    "laser-pen": "^1.0.1",
+    "@plait-board/react-board": "0.4.0-2",
+    "@plait-board/react-text": "0.4.0-2",
+    "@plait/core": "0.92.3",
+    "@plait/common": "0.92.3",
+    "@plait/draw": "0.92.3",
+    "@plait/layouts": "0.92.3",
+    "@plait/mind": "0.92.3",
+    "@plait/text-plugins": "0.92.3",
+    "classnames": "^2.5.1",
+    "is-hotkey": "^0.2.0",
+    "slate": "^0.116.0",
+    "slate-dom": "^0.116.0",
+    "slate-react": "^0.116.0",
+    "slate-history": "^0.115.0",
+    "lodash": "^4.17.21",
+    "roughjs": "^4.6.6",
+    "browser-fs-access": "^0.35.0"
   },
   "exports": {
     ".": {
+      "types": "./index.d.ts",
       "import": "./index.mjs",
-      "require": "./index.js",
-      "types": "./index.d.ts"
-    }
+      "require": "./index.js"
+    },
+    "./editor": {
+      "types": "./editor.d.ts",
+      "import": "./editor.mjs",
+      "require": "./editor.js"
+    },
+    "./index.css": "./index.css",
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "description": "Drawnix with standalone mind-map notes and a host-independent editor interface",
+  "module": "./index.mjs",
+  "files": [
+    "**/*"
+  ],
+  "sideEffects": [
+    "./index.css"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TTsWorld/drawnix.git",
+    "directory": "packages/drawnix"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1 || ^19.0.0",
+    "react-dom": "^18.3.1 || ^19.0.0"
   }
 }

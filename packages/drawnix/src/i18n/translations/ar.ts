@@ -1,6 +1,15 @@
 import { Translations } from '../types';
 
 const arTranslations: Translations = {
+  'notes.add': "إضافة ملاحظة",
+  'notes.open': "فتح الملاحظة",
+  'notes.title': "ملاحظة العقدة",
+  'notes.close': "إغلاق الملاحظة",
+  'notes.content': "الملاحظة",
+  'notes.placeholder': "اكتب التفاصيل هنا واحتفظ بالفكرة الأساسية في العقدة…",
+  'notes.hint': "تُحفظ مع العقدة",
+  'notes.remove': "حذف الملاحظة",
+
     // Toolbar items
     "toolbar.hand": "اليد — H",
     "toolbar.selection": "التحديد — V",

@@ -40,6 +40,8 @@ import { LinkPopup } from './components/popup/link-popup/link-popup';
 import { I18nProvider } from './i18n';
 import { Tutorial } from './components/tutorial';
 import { LASER_POINTER_CLASS_NAME } from './utils/laser-pointer';
+import { createDrawnixEditor, type DrawnixEditor } from './editor';
+import { MindmapNotes } from './components/mindmap-notes';
 
 export type DrawnixProps = {
   value: PlaitElement[];
@@ -51,6 +53,7 @@ export type DrawnixProps = {
   onViewportChange?: (value: Viewport) => void;
   onThemeChange?: (value: ThemeColorMode) => void;
   afterInit?: (board: PlaitBoard) => void;
+  onEditorReady?: (editor: DrawnixEditor) => void;
   tutorial?: boolean;
 } & React.HTMLAttributes<HTMLDivElement>;
 
@@ -64,6 +67,7 @@ export const Drawnix: React.FC<DrawnixProps> = ({
   onThemeChange,
   onValueChange,
   afterInit,
+  onEditorReady,
   tutorial = false,
 }) => {
   const options: PlaitBoardOptions = {
@@ -92,10 +96,10 @@ export const Drawnix: React.FC<DrawnixProps> = ({
   }
 
   const updateAppState = (newAppState: Partial<DrawnixState>) => {
-    setAppState({
-      ...appState,
+    setAppState((state) => ({
+      ...state,
       ...newAppState,
-    });
+    }));
   };
 
   const plugins: PlaitPlugin[] = [
@@ -120,6 +124,14 @@ export const Drawnix: React.FC<DrawnixProps> = ({
             'drawnix--mobile': appState.isMobile,
           })}
           ref={containerRef}
+          tabIndex={-1}
+          onPointerDownCapture={(event) => {
+            if (!(event.target as Element).closest(
+              'input, textarea, button, select, [contenteditable="true"]'
+            )) {
+              event.currentTarget.focus({ preventScroll: true });
+            }
+          }}
         >
           <Wrapper
             value={value}
@@ -137,8 +149,22 @@ export const Drawnix: React.FC<DrawnixProps> = ({
           >
             <Board
               afterInit={(board) => {
+                // Multiple embedded editors must not handle each other's shortcuts.
+                const { globalKeyDown, keyDown, keyUp } = board;
+                const ownsEvent = (event: KeyboardEvent) =>
+                  event.target instanceof Node && containerRef.current?.contains(event.target);
+                board.globalKeyDown = (event) => {
+                  if (ownsEvent(event)) globalKeyDown(event);
+                };
+                board.keyDown = (event) => {
+                  if (ownsEvent(event)) keyDown(event);
+                };
+                board.keyUp = (event) => {
+                  if (ownsEvent(event)) keyUp(event);
+                };
                 setBoard(board as DrawnixBoard);
                 afterInit && afterInit(board);
+                onEditorReady?.(createDrawnixEditor(board));
               }}
             >
               {tutorial &&
@@ -153,6 +179,7 @@ export const Drawnix: React.FC<DrawnixProps> = ({
             <ThemeToolbar></ThemeToolbar>
             <PopupToolbar></PopupToolbar>
             <LinkPopup></LinkPopup>
+            <MindmapNotes />
             <ClosePencilToolbar></ClosePencilToolbar>
             <TTDDialog container={containerRef.current}></TTDDialog>
             <CleanConfirm container={containerRef.current}></CleanConfirm>

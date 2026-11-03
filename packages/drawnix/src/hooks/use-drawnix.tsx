@@ -3,11 +3,11 @@
  * context whenever changes occur.
  */
 import { PlaitBoard, PlaitPointerType } from '@plait/core';
-import { createContext, useContext } from 'react';
+import { createContext, useContext, Dispatch, SetStateAction } from 'react';
 import { MindPointerType } from '@plait/mind';
 import { DrawPointerType } from '@plait/draw';
 import { FreehandShape } from '../plugins/freehand/type';
-import { Editor } from 'slate';
+import type { CustomEditor } from '@plait-board/react-text';
 import { LinkElement } from '@plait/common';
 
 export enum DialogType {
@@ -27,7 +27,7 @@ export interface DrawnixBoard extends PlaitBoard {
 
 export type LinkState = {
   targetDom: HTMLElement;
-  editor: Editor;
+  editor: CustomEditor;
   targetElement: LinkElement;
   isEditing: boolean;
   isHovering: boolean;
@@ -41,16 +41,17 @@ export type DrawnixState = {
   openDialogType: DialogType | null;
   openCleanConfirm: boolean;
   linkState?: LinkState | null;
+  openNoteId?: string | null;
 };
 
 export const DrawnixContext = createContext<{
   appState: DrawnixState;
-  setAppState: (appState: DrawnixState) => void;
+  setAppState: Dispatch<SetStateAction<DrawnixState>>;
 } | null>(null);
 
 export const useDrawnix = (): {
   appState: DrawnixState;
-  setAppState: (appState: DrawnixState) => void;
+  setAppState: Dispatch<SetStateAction<DrawnixState>>;
 } => {
   const context = useContext(DrawnixContext);
 

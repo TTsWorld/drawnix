@@ -1,8 +1,9 @@
 import { PlaitBoard, PlaitElement } from '@plait/core';
-import { MIME_TYPES, VERSIONS } from '../constants';
+import { MIME_TYPES } from '../constants';
 import { fileOpen, fileSave } from './filesystem';
 import { DrawnixExportedData, DrawnixExportedType } from './types';
 import { loadFromBlob, normalizeFile } from './blob';
+import { serializeDrawnixBoard } from '../editor';
 
 export const getDefaultName = () => {
   const time = new Date().getTime();
@@ -46,13 +47,5 @@ export const isValidDrawnixData = (data?: any): data is DrawnixExportedData => {
 };
 
 export const serializeAsJSON = (board: PlaitBoard): string => {
-  const data = {
-    type: DrawnixExportedType.drawnix,
-    version: VERSIONS.drawnix,
-    source: 'web',
-    elements: board.children,
-    viewport: board.viewport,
-  };
-
-  return JSON.stringify(data, null, 2);
+  return serializeDrawnixBoard(board);
 };

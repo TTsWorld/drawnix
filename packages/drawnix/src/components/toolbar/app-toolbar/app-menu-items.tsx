@@ -53,6 +53,7 @@ export const OpenFile = () => {
     theme?: PlaitTheme
   ) => {
     board.children = value;
+    board.history = { undos: [], redos: [] };
     board.viewport = viewport || { zoom: 1 };
     board.theme = theme || { themeColorMode: ThemeColorMode.default };
     listRender.update(board.children, {
@@ -67,7 +68,7 @@ export const OpenFile = () => {
       data-testid="open-button"
       onSelect={() => {
         loadFromJSON(board).then((data) => {
-          clearAndLoad(data.elements, data.viewport);
+          clearAndLoad(data.elements, data.viewport, data.theme);
         });
       }}
       icon={OpenFileIcon}

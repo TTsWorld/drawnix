@@ -53,7 +53,7 @@ export enum PopupKey {
 }
 
 type AppToolButtonProps = {
-  titleKey?: keyof typeof import('../../i18n').Translations;
+  titleKey?: keyof import('../../i18n').Translations;
   name?: string;
   icon: React.ReactNode;
   pointer?: DrawnixPointerType;
@@ -143,8 +143,8 @@ export const CreationToolbar = () => {
     useState<AppToolButtonProps>(
       BUTTONS.find((button) => button.key === PopupKey.freehand)!
     );
-  const [lastShapePointer, setLastShapePointer] = useState<string | undefined>(SHAPES[0].pointer);
-  const [lastArrowPointer, setLastArrowPointer] = useState<string | undefined>(ARROWS[0].pointer);
+  const [lastShapePointer, setLastShapePointer] = useState<DrawnixPointerType | undefined>(SHAPES[0].pointer);
+  const [lastArrowPointer, setLastArrowPointer] = useState<DrawnixPointerType | undefined>(ARROWS[0].pointer);
 
   const onPointerDown = (pointer: DrawnixPointerType) => {
     setCreationMode(board, BoardCreationMode.dnd);

@@ -97,7 +97,7 @@ export const LinkPopup = () => {
       const editor = linkState!.editor;
       const node = linkState!.targetElement;
       const path = ReactEditor.findPath(editor, node);
-      Transforms.setNodes(editor, { url: url }, { at: path });
+      Transforms.setNodes<LinkElement>(editor, { url: url }, { at: path });
     }
     const linkElement = LinkEditor.getLinkElement(linkState!.editor);
     setAppState({

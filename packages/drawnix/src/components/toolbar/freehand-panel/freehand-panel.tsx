@@ -18,7 +18,7 @@ import {
 import { useI18n } from '../../../i18n';
 
 export interface FreehandProps {
-    titleKey: string;
+    titleKey: keyof import('../../../i18n').Translations;
     icon: React.ReactNode;
     pointer: DrawnixPointerType;
 }

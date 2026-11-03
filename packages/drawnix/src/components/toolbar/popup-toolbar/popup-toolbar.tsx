@@ -43,6 +43,7 @@ import { NO_COLOR } from '../../../constants/color';
 import { Freehand } from '../../../plugins/freehand/type';
 import { PopupLinkButton } from './link-button';
 import { ArrowMarkButton } from './arrow-mark-button';
+import { MindmapNoteButton } from '../../mindmap-notes';
 
 export const PopupToolbar = () => {
   const board = useBoard();
@@ -181,6 +182,7 @@ export const PopupToolbar = () => {
           style={floatingStyles}
         >
           <Stack.Row gap={1}>
+            <MindmapNoteButton />
             {state.hasFontColor && (
               <PopupFontColorButton
                 board={board}

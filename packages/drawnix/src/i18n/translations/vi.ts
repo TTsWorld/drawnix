@@ -1,6 +1,15 @@
 import { Translations } from '../types';
 
 const viTranslations: Translations = {
+  'notes.add': "Thêm ghi chú",
+  'notes.open': "Mở ghi chú",
+  'notes.title': "Ghi chú nút",
+  'notes.close': "Đóng ghi chú",
+  'notes.content': "Nội dung ghi chú",
+  'notes.placeholder': "Giữ ý chính trên nút, viết chi tiết ở đây…",
+  'notes.hint': "Lưu cùng nút",
+  'notes.remove': "Xóa ghi chú",
+
     // Toolbar items
     'toolbar.hand': 'Kéo — H',
     'toolbar.selection': 'Chọn — V',

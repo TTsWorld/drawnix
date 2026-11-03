@@ -14,7 +14,8 @@ export default defineConfig({
     nxViteTsPaths(),
     dts({
       entryRoot: 'src',
-      tsconfigPath: path.join(__dirname, 'tsconfig.lib.json'),
+      tsconfigPath: path.join(__dirname, 'tsconfig.package.json'),
+      pathsToAliases: false,
     }),
   ],
 
@@ -34,9 +35,10 @@ export default defineConfig({
     },
     lib: {
       // Could also be a dictionary or array of multiple entry points.
-      entry: 'src/index.ts',
+      entry: { index: 'src/index.ts', editor: 'src/editor.ts' },
       name: 'drawnix',
-      fileName: 'index',
+      fileName: (format, name) => `${name}.${format === 'es' ? 'mjs' : 'js'}`,
+      cssFileName: 'index',
       // Change this to the formats you want to support.
       // Don't forget to update your package.json as well.
       formats: ['es', 'cjs'],
