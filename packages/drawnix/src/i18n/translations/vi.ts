@@ -6,7 +6,6 @@ const viTranslations: Translations = {
   'notes.title': "Ghi chú nút",
   'notes.close': "Đóng ghi chú",
   'notes.content': "Nội dung ghi chú",
-  'notes.remove': "Xóa ghi chú",
 
     // Toolbar items
     'toolbar.hand': 'Kéo — H',

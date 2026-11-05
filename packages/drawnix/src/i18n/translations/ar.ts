@@ -6,7 +6,6 @@ const arTranslations: Translations = {
   'notes.title': "ملاحظة العقدة",
   'notes.close': "إغلاق الملاحظة",
   'notes.content': "الملاحظة",
-  'notes.remove': "حذف الملاحظة",
 
     // Toolbar items
     "toolbar.hand": "اليد — H",

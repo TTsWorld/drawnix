@@ -10,7 +10,6 @@ export interface Translations {
   'notes.title': string;
   'notes.close': string;
   'notes.content': string;
-  'notes.remove': string;
 
   // Toolbar items
   'toolbar.hand': string;

@@ -6,7 +6,6 @@ const zhTranslations: Translations = {
   'notes.title': "节点备注",
   'notes.close': "关闭备注",
   'notes.content': "备注内容",
-  'notes.remove': "删除备注",
 
   // Toolbar items
   'toolbar.hand': '手形工具 — H',

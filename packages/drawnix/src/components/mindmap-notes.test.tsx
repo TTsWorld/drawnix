@@ -166,7 +166,7 @@ describe('mind-map note editing', () => {
     expect(screen.getByRole('textbox')).toBe(input);
   });
 
-  it('refreshes badges after adding, deleting and restoring the first note', async () => {
+  it('refreshes badges after adding, clearing and restoring the first note', async () => {
     const { input, board } = await setup();
     expect(
       screen.queryByRole('button', { name: '打开备注: Original' })
@@ -181,8 +181,10 @@ describe('mind-map note editing', () => {
     expect(badge.style.left).toBe('205px');
     expect(badge.style.top).toBe('92px');
 
+    fireEvent.blur(input);
+    fireEvent.focus(input);
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '删除备注' }));
+      fireEvent.input(input, { target: { value: '' } });
     });
     expect(
       screen.queryByRole('button', { name: '打开备注: Original' })
@@ -451,10 +453,10 @@ describe('mind-map note editing', () => {
     expect(editor.readMindmap()[0].note).toBe('a你b');
   });
 
-  it('restores a deleted multiline note through the same history', async () => {
+  it('restores a cleared multiline note through the same history', async () => {
     const { input, editor, board } = await setup('第一行\n第二行');
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '删除备注' }));
+      fireEvent.input(input, { target: { value: '' } });
     });
     expect(input.value).toBe('');
     expect(editor.readMindmap()[0].note).toBeUndefined();

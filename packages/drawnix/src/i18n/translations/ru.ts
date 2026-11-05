@@ -6,7 +6,6 @@ const ruTranslations: Translations = {
   'notes.title': "Заметка узла",
   'notes.close': "Закрыть заметку",
   'notes.content': "Текст заметки",
-  'notes.remove': "Удалить заметку",
 
   // Toolbar items
   'toolbar.hand': 'Рука — H',

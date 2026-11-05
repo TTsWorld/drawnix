@@ -6,7 +6,6 @@ const enTranslations: Translations = {
   'notes.title': "Node note",
   'notes.close': "Close note",
   'notes.content': "Note",
-  'notes.remove': "Remove note",
 
   // Toolbar items
   'toolbar.hand': 'Hand — H',

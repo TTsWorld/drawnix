@@ -15,7 +15,6 @@ import {
 } from '@plait/core';
 import { MindElement } from '@plait/mind';
 import { Node } from 'slate';
-import { applyMindmapOperations } from '../editor';
 import { useDrawnix } from '../hooks/use-drawnix';
 import { useI18n } from '../i18n';
 import { NoteIcon } from './icons';
@@ -240,19 +239,6 @@ export const MindmapNotes = () => {
               lastInputOperation.current = batch[batch.length - 1];
             }}
           />
-          <footer>
-            <button
-              type="button"
-              disabled={!node.note}
-              onClick={() =>
-                applyMindmapOperations(board, [
-                  { type: 'set_note', nodeId: node.id, note: '' },
-                ])
-              }
-            >
-              {t('notes.remove')}
-            </button>
-          </footer>
         </aside>
       )}
     </>
