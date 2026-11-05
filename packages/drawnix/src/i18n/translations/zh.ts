@@ -6,8 +6,6 @@ const zhTranslations: Translations = {
   'notes.title': "节点备注",
   'notes.close': "关闭备注",
   'notes.content': "备注内容",
-  'notes.placeholder': "节点只写核心点，详细解释和个人笔记写在这里…",
-  'notes.hint': "备注随节点保存",
   'notes.remove': "删除备注",
 
   // Toolbar items

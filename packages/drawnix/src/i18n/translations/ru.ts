@@ -6,8 +6,6 @@ const ruTranslations: Translations = {
   'notes.title': "Заметка узла",
   'notes.close': "Закрыть заметку",
   'notes.content': "Текст заметки",
-  'notes.placeholder': "Ключевая мысль — в узле, подробности — здесь…",
-  'notes.hint': "Хранится вместе с узлом",
   'notes.remove': "Удалить заметку",
 
   // Toolbar items

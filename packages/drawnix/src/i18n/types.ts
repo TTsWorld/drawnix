@@ -10,8 +10,6 @@ export interface Translations {
   'notes.title': string;
   'notes.close': string;
   'notes.content': string;
-  'notes.placeholder': string;
-  'notes.hint': string;
   'notes.remove': string;
 
   // Toolbar items

@@ -6,8 +6,6 @@ const enTranslations: Translations = {
   'notes.title': "Node note",
   'notes.close': "Close note",
   'notes.content': "Note",
-  'notes.placeholder': "Keep the key point on the node. Write details here…",
-  'notes.hint': "Stored with this node",
   'notes.remove': "Remove note",
 
   // Toolbar items

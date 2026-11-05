@@ -174,10 +174,7 @@ export const MindmapNotes = () => {
           }}
         >
           <header>
-            <div>
-              <span>{t('notes.title')}</span>
-              <h2>{Node.string(node.data.topic)}</h2>
-            </div>
+            <span>{t('notes.title')}</span>
             <button
               type="button"
               aria-label={t('notes.close')}
@@ -187,17 +184,11 @@ export const MindmapNotes = () => {
               ×
             </button>
           </header>
-          <label
-            className="drawnix-note-label"
-            htmlFor={`drawnix-note-${node.id}`}
-          >
-            {t('notes.content')}
-          </label>
           <textarea
             ref={textarea}
             id={`drawnix-note-${node.id}`}
+            aria-label={t('notes.content')}
             value={draft}
-            placeholder={t('notes.placeholder')}
             onBlur={() => {
               lastInputOperation.current = null;
             }}
@@ -250,7 +241,6 @@ export const MindmapNotes = () => {
             }}
           />
           <footer>
-            <span>{t('notes.hint')}</span>
             <button
               type="button"
               disabled={!node.note}
