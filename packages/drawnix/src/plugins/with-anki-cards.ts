@@ -2,11 +2,14 @@ import {
   type PlaitBoard,
   type PlaitElement,
   PlaitHistoryBoard,
+  type PlaitOperation,
   Transforms,
   WritableClipboardOperationType,
 } from '@plait/core';
 import {
   collectAnkiCardIds,
+  createAnkiCardId,
+  deriveAnkiCardId,
   findDuplicateAnkiCardIds,
   markAnkiCardsCut,
   prepareAnkiCardsForPaste,
@@ -21,18 +24,24 @@ const MAX_PASTED_CUTS = 100;
 let pastedCutsInMemory: string[] = [];
 
 function readPastedCuts(): Set<string> {
-  const cuts = new Set(pastedCutsInMemory);
+  // Shared storage is authoritative when available, so a cut freed in another
+  // window is free here too; memory is only the fallback.
   try {
-    const stored: unknown = JSON.parse(
-      globalThis.localStorage?.getItem(PASTED_CUTS_KEY) ?? '[]'
-    );
-    if (Array.isArray(stored)) {
-      stored.forEach((cut) => typeof cut === 'string' && cuts.add(cut));
+    const storage = globalThis.localStorage;
+    if (storage) {
+      const stored: unknown = JSON.parse(
+        storage.getItem(PASTED_CUTS_KEY) ?? '[]'
+      );
+      return new Set(
+        Array.isArray(stored)
+          ? stored.filter((cut): cut is string => typeof cut === 'string')
+          : []
+      );
     }
   } catch {
-    // Storage may be unavailable or hold invalid data; memory still applies.
+    // Unavailable or invalid storage: use memory.
   }
-  return cuts;
+  return new Set(pastedCutsInMemory);
 }
 
 function writePastedCuts(cuts: Set<string>) {
@@ -47,28 +56,84 @@ function writePastedCuts(cuts: Set<string>) {
   }
 }
 
-function cardIdsOf(element: PlaitElement): Set<string> {
-  return collectAnkiCardIds([element], new Set());
+function updatePastedCuts(change: (cuts: Set<string>) => void) {
+  const cuts = readPastedCuts();
+  change(cuts);
+  writePastedCuts(cuts);
+}
+
+/**
+ * A history step that holds a cut's original card IDs: the source removal of
+ * a cut, or the first paste that kept the IDs. Only undo/redo of exactly
+ * this step changes who has the IDs.
+ */
+interface CutStep {
+  cutId: string;
+  role: 'source' | 'paste';
+  batch: PlaitOperation[];
+  cardIds: Set<string>;
+  /** Whether this board holds the cut's original IDs because of this step. */
+  owns: boolean;
+}
+
+/** Gives cards that came back with a cut's IDs, now held elsewhere, new IDs. */
+function renewCards(board: PlaitBoard, cardIds: Set<string>) {
+  const used = collectAnkiCardIds(board.children, new Set());
+  const fixes: Array<{ path: number[]; ankiCards: unknown[] }> = [];
+  const walk = (list: PlaitElement[], parent: number[]) =>
+    list.forEach((element, index) => {
+      const path = [...parent, index];
+      const cards: unknown = element?.['ankiCards'];
+      if (Array.isArray(cards) && cards.some((c) => cardIds.has(c?.id))) {
+        fixes.push({
+          path,
+          ankiCards: cards.map((card) => {
+            if (!card || !cardIds.has(card.id)) return card;
+            let attempt = 0;
+            let id: string;
+            do id = deriveAnkiCardId(String(element.id), card.id, attempt++);
+            while (used.has(id));
+            used.add(id);
+            return { ...card, id };
+          }),
+        });
+      }
+      if (Array.isArray(element?.children)) walk(element.children, path);
+    });
+  walk(board.children, []);
+  PlaitHistoryBoard.withoutSaving(board, () => {
+    for (const fix of fixes) {
+      Transforms.setNode(board, { ankiCards: fix.ankiCards }, fix.path);
+    }
+  });
 }
 
 /**
  * Keeps card IDs unique and stable:
  *
  * - Copy, cut, duplicate and paste: copies get new card IDs; the first paste
- *   of a cut keeps them so the cards move with their node. That first paste
- *   is tied to this board's history: undoing it frees the cut again (the
- *   next paste is still the same move and keeps the IDs), redoing it uses
- *   the cut again.
+ *   of a cut keeps them so the cards move with their node. That paste step
+ *   and the cut's removal step are tied to history: undoing the paste frees
+ *   the cut again (pasting again is still the same move), redoing it takes
+ *   the IDs back. If the IDs are held elsewhere by then (another document
+ *   took the move), the restored cards get new IDs instead. Undoing a cut
+ *   whose IDs another document already took does the same.
  * - Duplicate card IDs in the document (older data, upstream Drawnix,
  *   host edits) are repaired after loading and after every change, without
  *   adding an undo step. See findDuplicateAnkiCardIds.
  */
 export const withAnkiCards = (board: PlaitBoard) => {
-  const { buildFragment, insertFragment, apply, undo, redo, afterChange } =
-    board;
-  // Card ID → cut ID, for cards whose IDs a cut's first paste kept here.
-  const keptByCut = new Map<string, string>();
-  let replaying = false;
+  const {
+    buildFragment,
+    deleteFragment,
+    insertFragment,
+    undo,
+    redo,
+    afterChange,
+  } = board;
+  const steps: CutStep[] = [];
+  let pendingCut: { cutId: string; cardIds: Set<string> } | null = null;
+  const lastBatch = (list?: PlaitOperation[][]) => list?.[list.length - 1];
 
   board.buildFragment = (
     clipboardContext,
@@ -82,20 +147,35 @@ export const withAnkiCards = (board: PlaitBoard) => {
       operationType,
       originData
     );
+    pendingCut = null;
     if (
       operationType === WritableClipboardOperationType.cut &&
       Array.isArray(context?.elements)
     ) {
-      return { ...context, elements: markAnkiCardsCut(context.elements) };
+      const cutId = createAnkiCardId();
+      const elements = markAnkiCardsCut(context.elements, cutId);
+      const cardIds = collectAnkiCardIds(context.elements, new Set());
+      if (cardIds.size) pendingCut = { cutId, cardIds };
+      return { ...context, elements };
     }
     return context;
   };
 
+  // Plait removes the cut elements right after building the fragment.
+  board.deleteFragment = (elements) => {
+    deleteFragment(elements);
+    const batch = lastBatch(board.history?.undos);
+    if (pendingCut && batch) {
+      steps.push({ ...pendingCut, role: 'source', batch, owns: false });
+    }
+    pendingCut = null;
+  };
+
   board.insertFragment = (clipboardData, targetPoint, operationType) => {
+    const kept = new Map<string, string>();
     if (clipboardData?.elements?.length) {
       const pastedCuts = readPastedCuts();
       const count = pastedCuts.size;
-      const kept = new Map<string, string>();
       clipboardData = {
         ...clipboardData,
         elements: prepareAnkiCardsForPaste(
@@ -105,47 +185,57 @@ export const withAnkiCards = (board: PlaitBoard) => {
           kept
         ),
       };
-      kept.forEach((cutId, cardId) => keptByCut.set(cardId, cutId));
       if (pastedCuts.size !== count) writePastedCuts(pastedCuts);
     }
     insertFragment(clipboardData, targetPoint, operationType);
+    const batch = lastBatch(board.history?.undos);
+    if (!kept.size || !batch) return;
+    const byCut = new Map<string, Set<string>>();
+    kept.forEach((cutId, cardId) =>
+      byCut.set(cutId, (byCut.get(cutId) ?? new Set()).add(cardId))
+    );
+    byCut.forEach((cardIds, cutId) =>
+      steps.push({ cutId, role: 'paste', batch, cardIds, owns: true })
+    );
   };
 
-  // While undo/redo replays operations, a cut's kept cards leaving the board
-  // free the cut; coming back uses it again.
-  board.apply = (operation) => {
-    if (
-      replaying &&
-      keptByCut.size &&
-      (operation.type === 'insert_node' || operation.type === 'remove_node')
-    ) {
-      const cuts = new Set<string>();
-      cardIdsOf(operation.node).forEach((cardId) => {
-        const cutId = keptByCut.get(cardId);
-        if (cutId) cuts.add(cutId);
-      });
-      if (cuts.size) {
-        const pastedCuts = readPastedCuts();
-        cuts.forEach((cutId) =>
-          operation.type === 'remove_node'
-            ? pastedCuts.delete(cutId)
-            : pastedCuts.add(cutId)
-        );
-        writePastedCuts(pastedCuts);
-      }
+  /** After a step's cards came back: take the cut's IDs, or renew them. */
+  const restored = (step: CutStep) => {
+    if (readPastedCuts().has(step.cutId)) {
+      renewCards(board, step.cardIds);
+      return;
     }
-    apply(operation);
+    updatePastedCuts((cuts) => cuts.add(step.cutId));
+    step.owns = true;
   };
-  const replay = (run: () => void) => () => {
-    replaying = true;
-    try {
+  /** After a step's cards left the board: free the cut if this step had it. */
+  const removed = (step: CutStep) => {
+    if (!step.owns) return;
+    step.owns = false;
+    updatePastedCuts((cuts) => cuts.delete(step.cutId));
+  };
+  const replay =
+    (
+      run: () => void,
+      list: () => PlaitOperation[][] | undefined,
+      isUndo: boolean
+    ) =>
+    () => {
+      const batch = lastBatch(list());
+      const affected = batch
+        ? steps.filter((step) => step.batch === batch)
+        : [];
       run();
-    } finally {
-      replaying = false;
-    }
-  };
-  if (undo) board.undo = replay(undo);
-  if (redo) board.redo = replay(redo);
+      for (const step of affected) {
+        // Undoing a paste or redoing a cut removes the cards; the opposite
+        // brings them back.
+        const back = (step.role === 'paste') !== isUndo;
+        if (back) restored(step);
+        else removed(step);
+      }
+    };
+  if (undo) board.undo = replay(undo, () => board.history?.undos, true);
+  if (redo) board.redo = replay(redo, () => board.history?.redos, false);
 
   let repairScheduled = false;
   const scheduleRepair = () => {

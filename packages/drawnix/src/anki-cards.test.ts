@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestingBoard,
   fakeNodeWeakMap,
@@ -614,5 +614,110 @@ describe('cut, paste, undo and paste again', () => {
     const c = target();
     c.paste(cut);
     expect(c.ids()[0]).not.toBe('m1');
+  });
+
+  it('renews cards restored by redo when another document took the move', () => {
+    const cut = cutSource();
+    const b = target();
+    b.paste(cut);
+    b.board.undo();
+    const c = target();
+    c.paste(cut);
+    expect(c.ids()).toEqual(['m1']);
+    b.board.redo();
+    const [restored] = b.ids();
+    expect(restored).not.toBe('m1');
+    // Stable: undo and redo again give the same replacement ID.
+    b.board.undo();
+    b.board.redo();
+    expect(b.ids()).toEqual([restored]);
+    // Once C gives the move back, B's redo takes the original IDs again.
+    c.board.undo();
+    b.board.undo();
+    b.board.redo();
+    expect(b.ids()).toEqual(['m1']);
+  });
+
+  it('does not free the cut when a later delete of the pasted node is redone', () => {
+    const cut = cutSource();
+    const b = target();
+    b.paste(cut);
+    fakeNodeWeakMap(b.board);
+    PlaitHistoryBoard.withNewBatch(b.board, () =>
+      Transforms.removeNode(b.board, [b.board.children.length - 1])
+    );
+    b.board.undo();
+    b.board.redo();
+    const c = target();
+    c.paste(cut);
+    expect(c.ids()[0]).not.toBe('m1');
+  });
+
+  it('renews the source cards when a cut is undone after another document took them', () => {
+    const a = setup();
+    setCards(a.board, [0, 1], [card('s1')]);
+    const child = (a.board.children[0] as MindElement).children[1];
+    a.board.buildFragment = () => ({
+      text: 'x',
+      type: WritableClipboardType.elements,
+      elements: [copyNewNode(child)],
+    });
+    a.board.deleteFragment = () => {
+      fakeNodeWeakMap(a.board);
+      PlaitHistoryBoard.withNewBatch(a.board, () =>
+        Transforms.removeNode(a.board, [0, 1])
+      );
+    };
+    withAnkiCards(a.board);
+    const fragment = a.board.buildFragment(
+      null,
+      null,
+      WritableClipboardOperationType.cut
+    );
+    a.board.deleteFragment([]);
+    const aIds = () => [...collectAnkiCardIds(a.board.children, new Set())];
+    const b = target();
+    b.paste(fragment?.elements as PlaitElement[]);
+    expect(b.ids()).toEqual(['s1']);
+
+    a.board.undo();
+    expect(aIds()).toHaveLength(1);
+    expect(aIds()[0]).not.toBe('s1');
+    // Redoing the cut does not free a move that B holds.
+    a.board.redo();
+    const c = target();
+    c.paste(fragment?.elements as PlaitElement[]);
+    expect(c.ids()[0]).not.toBe('s1');
+    // When B gives the move back, undoing the cut restores the original ID,
+    // and the clipboard content is then only a copy.
+    b.board.undo();
+    a.board.undo();
+    expect(aIds()).toEqual(['s1']);
+    const d = target();
+    d.paste(fragment?.elements as PlaitElement[]);
+    expect(d.ids()[0]).not.toBe('s1');
+  });
+
+  describe('with shared storage', () => {
+    let store: Map<string, string>;
+    beforeEach(() => {
+      store = new Map();
+      vi.stubGlobal('localStorage', {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => store.set(key, value),
+      });
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('sees a cut freed by another window', () => {
+      const cut = cutSource();
+      const b = target();
+      b.paste(cut);
+      // Another window undid this paste's twin and freed the cut.
+      store.set('drawnix-anki-pasted-cuts', '[]');
+      const c = target();
+      c.paste(cut);
+      expect(c.ids()).toEqual(['m1']);
+    });
   });
 });
