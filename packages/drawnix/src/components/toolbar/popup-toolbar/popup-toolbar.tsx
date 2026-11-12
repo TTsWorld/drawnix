@@ -42,6 +42,7 @@ import { isWhite, removeHexAlpha } from '../../../utils/color';
 import { NO_COLOR } from '../../../constants/color';
 import { Freehand } from '../../../plugins/freehand/type';
 import { PopupLinkButton } from './link-button';
+import { getPopupToolbarPlacement } from './popup-toolbar-placement';
 import { ArrowMarkButton } from './arrow-mark-button';
 import { MindmapNoteButton } from '../../mindmap-notes';
 import { MindmapAnkiCardButton } from '../../mindmap-anki-cards';
@@ -58,7 +59,7 @@ export const PopupToolbar = () => {
     !selectedElements.some(PlaitDrawElement.isImage);
   const { viewport, selection, children } = board;
   const { refs, floatingStyles } = useFloating({
-    placement: 'right-start',
+    placement: getPopupToolbarPlacement(board, selectedElements),
     middleware: [offset(32), flip()],
   });
   let state: {

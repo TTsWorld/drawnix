@@ -10,6 +10,7 @@ export default defineConfig({
       'packages/drawnix/src/anki-cards.test.ts',
       'packages/drawnix/src/components/mindmap-notes.test.tsx',
       'packages/drawnix/src/components/mindmap-anki-cards.test.tsx',
+      'packages/drawnix/src/components/toolbar/popup-toolbar/popup-toolbar-placement.test.ts',
     ],
   },
 });
