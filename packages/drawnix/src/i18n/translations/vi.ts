@@ -6,6 +6,18 @@ const viTranslations: Translations = {
   'notes.title': "Ghi chú nút",
   'notes.close': "Đóng ghi chú",
   'notes.content': "Nội dung ghi chú",
+  'anki.add': "Thêm thẻ Anki",
+  'anki.open': "Mở thẻ Anki",
+  'anki.title': "Thẻ Anki",
+  'anki.close': "Đóng thẻ Anki",
+  'anki.new': "Thẻ mới",
+  'anki.card': "Thẻ",
+  'anki.front': "Mặt trước",
+  'anki.back': "Mặt sau",
+  'anki.tags': "Thẻ phân loại",
+  'anki.tagsPlaceholder': "Phân tách bằng dấu cách",
+  'anki.delete': "Xóa thẻ",
+  'anki.empty': "Nút này chưa có thẻ nào",
 
     // Toolbar items
     'toolbar.hand': 'Kéo — H',

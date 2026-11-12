@@ -10,6 +10,18 @@ export interface Translations {
   'notes.title': string;
   'notes.close': string;
   'notes.content': string;
+  'anki.add': string;
+  'anki.open': string;
+  'anki.title': string;
+  'anki.close': string;
+  'anki.new': string;
+  'anki.card': string;
+  'anki.front': string;
+  'anki.back': string;
+  'anki.tags': string;
+  'anki.tagsPlaceholder': string;
+  'anki.delete': string;
+  'anki.empty': string;
 
   // Toolbar items
   'toolbar.hand': string;

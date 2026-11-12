@@ -30,6 +30,42 @@ typing to another node after a move or deletion. The standalone
 web app stores the document locally; the app menu exports and imports
 `.drawnix` files including notes.
 
+## Anki cards
+
+Anki cards are a second node widget, independent of notes. A node can have no
+cards, one, or many. Choose **Add Anki card** in a selected node's floating
+toolbar, or click the card badge (icon and count) next to a node, to open the
+side panel. New cards copy the node title to the front and the note to the
+back; afterwards cards are independent of the node text. The panel adds,
+edits, and deletes cards; tags are separated by spaces. Notes and cards share
+the panel position, so opening one closes the other. Keyboard, clipboard, and
+undo/redo in the panel follow the note panel: continuous typing in one field is
+one undo step.
+
+Cards are stored at `MindElement.ankiCards` (outside `data`, like notes):
+
+```ts
+ankiCards?: Array<{ id: string; front: string; back: string; tags?: string[] }>;
+```
+
+`id` is a random UUID that never changes, so hosts can use it as the Anki note
+GUID across repeated exports. Pasting or duplicating nodes renews IDs that are
+already on the board; cut and paste keeps them. Deleting the last card removes
+the field. `front` and `back` are plain multiline text; exporters must escape
+HTML and convert line breaks. Card images, image occlusion, scheduling, and
+`.apkg` export are not part of this package.
+
+Read cards for export with `editor.readAnkiCards()`, or headlessly with
+`getMindmapAnkiCards(document.elements)` from `@ttsworld/drawnix/editor`. Both
+return nodes with cards, depth-first in document order:
+
+```ts
+{ nodeId: string; topic: string; image?: { url; width; height }; cards: MindmapAnkiCard[] }[]
+```
+
+`image` is the node's own `data.image` reference. Malformed card entries are
+skipped.
+
 ## Embed
 
 ```tsx
@@ -59,22 +95,26 @@ changes as well.
 
 - `serialize(): string` — current native document, including notes and theme.
 - `readMindmap(): MindmapNode[]` — node IDs, topics, optional notes, and children.
+- `readAnkiCards(): MindmapAnkiCardNode[]` — every node with Anki cards (see above).
 - `updateMindmap(operations): void` — atomic batches of 1–50 operations, with one
   undo entry per batch. Supported operations: `populate_empty`, `set_topic`,
   `insert_child`, `insert_sibling`, and `set_note` (`nodeId`, `note`). An empty
   note removes the field. The host must reject stale or unauthorized commands
   before calling this method.
 
-The headless `./editor` entry also exports `createMindmapDocument(markdown)`
-and `parseDrawnixDocument(content)` for document creation and loading.
+The headless `./editor` entry also exports `createMindmapDocument(markdown)`,
+`parseDrawnixDocument(content)`, and `getMindmapAnkiCards(elements)` for
+document creation, loading, and card export.
 
 ## Data compatibility
 
-Notes are an optional string at `MindElement.note`, outside `data`. Existing
-documents need no migration. A node's title stays in `data.topic`; Plait's
+Notes are an optional string at `MindElement.note`, and Anki cards an optional
+array at `MindElement.ankiCards`, both outside `data`. Existing documents need
+no migration. A node's title stays in `data.topic`; Plait's
 emoji transforms rebuild `data`, so notes must not be stored there. Keep
-notes with their nodes during copy, move, undo, and serialization. Upstream
-Drawnix does not display this extension; edits made with other versions must
+notes and cards with their nodes during copy, move, undo, and serialization.
+Upstream Drawnix does not display these extensions, and duplicating a node
+there copies card IDs unchanged; edits made with other versions must
 be checked for preservation before relying on round trips.
 
 ## Verify and package

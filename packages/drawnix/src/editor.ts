@@ -23,6 +23,14 @@ import {
 } from '@plait/mind';
 import { Node, type Element as SlateElement } from 'slate';
 import { parseMarkdownToDrawnix } from '@plait-board/markdown-to-drawnix';
+import { getMindmapAnkiCards, type MindmapAnkiCardNode } from './anki-cards';
+
+export {
+  getMindmapAnkiCards,
+  type MindmapAnkiCard,
+  type MindmapAnkiCardImage,
+  type MindmapAnkiCardNode,
+} from './anki-cards';
 
 export interface DrawnixDocument {
   type: 'drawnix';
@@ -52,6 +60,8 @@ export interface DrawnixEditor {
   serialize(): string;
   readMindmap(): MindmapNode[];
   updateMindmap(operations: MindmapOperation[]): void;
+  /** Every node with Anki cards, depth-first in document order. */
+  readAnkiCards(): MindmapAnkiCardNode[];
 }
 
 export function createDrawnixEditor(board: PlaitBoard): DrawnixEditor {
@@ -59,6 +69,7 @@ export function createDrawnixEditor(board: PlaitBoard): DrawnixEditor {
     serialize: () => serializeDrawnixBoard(board),
     readMindmap: () => getMindmapOutline(board.children),
     updateMindmap: (operations) => applyMindmapOperations(board, operations),
+    readAnkiCards: () => getMindmapAnkiCards(board.children),
   };
 }
 

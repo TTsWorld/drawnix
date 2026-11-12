@@ -6,6 +6,18 @@ const enTranslations: Translations = {
   'notes.title': "Node note",
   'notes.close': "Close note",
   'notes.content': "Note",
+  'anki.add': "Add Anki card",
+  'anki.open': "Open Anki cards",
+  'anki.title': "Anki cards",
+  'anki.close': "Close Anki cards",
+  'anki.new': "New card",
+  'anki.card': "Card",
+  'anki.front': "Front",
+  'anki.back': "Back",
+  'anki.tags': "Tags",
+  'anki.tagsPlaceholder': "Separate with spaces",
+  'anki.delete': "Delete card",
+  'anki.empty': "This node has no cards yet",
 
   // Toolbar items
   'toolbar.hand': 'Hand — H',

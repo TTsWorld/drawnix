@@ -1,0 +1,109 @@
+@use './mindmap-widget' as widget;
+
+.drawnix {
+  .drawnix-anki-badges {
+    @include widget.badge-layer;
+  }
+
+  .drawnix-anki-badge {
+    @include widget.badge;
+    display: flex;
+    gap: 2px;
+    width: auto;
+    min-width: 24px;
+    padding: 4px 6px 4px 4px;
+    span {
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 14px;
+    }
+  }
+
+  .drawnix-anki-panel {
+    @include widget.panel;
+
+    .drawnix-anki-count {
+      margin-left: 6px;
+      font-weight: 400;
+      color: var(--color-gray-60);
+    }
+
+    .drawnix-anki-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      margin: 0 -20px;
+      padding: 0 20px;
+    }
+
+    .drawnix-anki-empty {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.8;
+      color: var(--color-gray-60);
+    }
+
+    .drawnix-anki-card {
+      padding-bottom: 14px;
+      & + .drawnix-anki-card {
+        padding-top: 14px;
+        border-top: 1px solid var(--color-gray-20);
+      }
+    }
+
+    .drawnix-anki-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      span {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--color-gray-60);
+      }
+      button {
+        display: grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        font-size: 18px;
+        line-height: 1;
+      }
+    }
+
+    label {
+      display: block;
+      margin-top: 6px;
+      font-size: 12px;
+      line-height: 18px;
+      color: var(--color-gray-60);
+    }
+
+    textarea,
+    input {
+      @include widget.plain-input;
+      &::placeholder {
+        color: var(--color-gray-40);
+      }
+    }
+    textarea {
+      min-height: 50px;
+      field-sizing: content;
+    }
+
+    .drawnix-anki-add {
+      flex: none;
+      align-self: flex-start;
+      margin-top: 12px;
+      padding: 4px 8px;
+      font: inherit;
+      font-size: 14px;
+      color: var(--color-primary-darkest);
+    }
+
+    &:has(textarea:focus-visible, input:focus-visible) {
+      border-color: var(--color-gray-40);
+    }
+  }
+}

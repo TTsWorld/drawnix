@@ -6,6 +6,18 @@ const zhTranslations: Translations = {
   'notes.title': "节点备注",
   'notes.close': "关闭备注",
   'notes.content': "备注内容",
+  'anki.add': "添加 Anki 卡片",
+  'anki.open': "打开 Anki 卡片",
+  'anki.title': "Anki 卡片",
+  'anki.close': "关闭 Anki 卡片",
+  'anki.new': "新增卡片",
+  'anki.card': "卡片",
+  'anki.front': "正面",
+  'anki.back': "背面",
+  'anki.tags': "标签",
+  'anki.tagsPlaceholder': "空格分隔",
+  'anki.delete': "删除卡片",
+  'anki.empty': "这个节点还没有卡片",
 
   // Toolbar items
   'toolbar.hand': '手形工具 — H',

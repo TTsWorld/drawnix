@@ -6,6 +6,18 @@ const arTranslations: Translations = {
   'notes.title': "ملاحظة العقدة",
   'notes.close': "إغلاق الملاحظة",
   'notes.content': "الملاحظة",
+  'anki.add': "إضافة بطاقة Anki",
+  'anki.open': "فتح بطاقات Anki",
+  'anki.title': "بطاقات Anki",
+  'anki.close': "إغلاق بطاقات Anki",
+  'anki.new': "بطاقة جديدة",
+  'anki.card': "بطاقة",
+  'anki.front': "الوجه",
+  'anki.back': "الظهر",
+  'anki.tags': "الوسوم",
+  'anki.tagsPlaceholder': "افصل بمسافات",
+  'anki.delete': "حذف البطاقة",
+  'anki.empty': "لا توجد بطاقات لهذه العقدة بعد",
 
     // Toolbar items
     "toolbar.hand": "اليد — H",

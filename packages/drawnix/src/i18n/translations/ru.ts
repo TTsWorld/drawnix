@@ -6,6 +6,18 @@ const ruTranslations: Translations = {
   'notes.title': "Заметка узла",
   'notes.close': "Закрыть заметку",
   'notes.content': "Текст заметки",
+  'anki.add': "Добавить карточку Anki",
+  'anki.open': "Открыть карточки Anki",
+  'anki.title': "Карточки Anki",
+  'anki.close': "Закрыть карточки Anki",
+  'anki.new': "Новая карточка",
+  'anki.card': "Карточка",
+  'anki.front': "Лицевая сторона",
+  'anki.back': "Оборотная сторона",
+  'anki.tags': "Метки",
+  'anki.tagsPlaceholder': "Через пробел",
+  'anki.delete': "Удалить карточку",
+  'anki.empty': "У этого узла пока нет карточек",
 
   // Toolbar items
   'toolbar.hand': 'Рука — H',

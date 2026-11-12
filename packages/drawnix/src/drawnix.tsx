@@ -42,6 +42,8 @@ import { Tutorial } from './components/tutorial';
 import { LASER_POINTER_CLASS_NAME } from './utils/laser-pointer';
 import { createDrawnixEditor, type DrawnixEditor } from './editor';
 import { MindmapNotes } from './components/mindmap-notes';
+import { MindmapAnkiCards } from './components/mindmap-anki-cards';
+import { withAnkiCards } from './plugins/with-anki-cards';
 
 export type DrawnixProps = {
   value: PlaitElement[];
@@ -112,6 +114,7 @@ export const Drawnix: React.FC<DrawnixProps> = ({
     withFreehand,
     buildPencilPlugin(updateAppState),
     buildTextLinkPlugin(updateAppState),
+    withAnkiCards,
   ];
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -180,6 +183,7 @@ export const Drawnix: React.FC<DrawnixProps> = ({
             <PopupToolbar></PopupToolbar>
             <LinkPopup></LinkPopup>
             <MindmapNotes />
+            <MindmapAnkiCards />
             <ClosePencilToolbar></ClosePencilToolbar>
             <TTDDialog container={containerRef.current}></TTDDialog>
             <CleanConfirm container={containerRef.current}></CleanConfirm>

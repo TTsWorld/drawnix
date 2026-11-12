@@ -42,6 +42,7 @@ export type DrawnixState = {
   openCleanConfirm: boolean;
   linkState?: LinkState | null;
   openNoteId?: string | null;
+  openAnkiCardsId?: string | null;
 };
 
 export const DrawnixContext = createContext<{

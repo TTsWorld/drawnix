@@ -1,24 +1,24 @@
-import { useContext, useEffect, useRef, useState } from 'react';
-import { BoardContext, useBoard } from '@plait-board/react-board';
+import { useEffect, useRef, useState } from 'react';
+import { useBoard } from '@plait-board/react-board';
 import {
   ATTACHED_ELEMENT_CLASS_NAME,
-  findElements,
-  FLUSHING,
-  getRectangleByElements,
   getSelectedElements,
-  PlaitBoard,
-  PlaitHistoryBoard,
   type PlaitOperation,
-  toHostPointFromViewBoxPoint,
-  toScreenPointFromHostPoint,
-  Transforms,
 } from '@plait/core';
 import { MindElement } from '@plait/mind';
-import { Node } from 'slate';
 import { useDrawnix } from '../hooks/use-drawnix';
 import { useI18n } from '../i18n';
 import { NoteIcon } from './icons';
 import { ToolButton } from './tool-button';
+import {
+  closeMindWidgetPanel,
+  findMindElement,
+  getMindWidgetPanelProps,
+  hasNote,
+  openMindWidget,
+  setNodeFromInput,
+  useMindNodeBadges,
+} from './mindmap-widgets';
 import './mindmap-notes.scss';
 
 export const MindmapNoteButton = () => {
@@ -39,29 +39,21 @@ export const MindmapNoteButton = () => {
       icon={NoteIcon}
       title={label}
       aria-label={label}
-      onClick={() =>
-        setAppState((state) => ({ ...state, openNoteId: node.id }))
-      }
+      onClick={() => openMindWidget(setAppState, 'note', node.id)}
     />
   );
 };
 
 export const MindmapNotes = () => {
   const board = useBoard();
-  const boardVersion = useContext(BoardContext)?.v;
   const { t } = useI18n();
   const { appState, setAppState } = useDrawnix();
   const textarea = useRef<HTMLTextAreaElement>(null);
   const lastInputOperation = useRef<PlaitOperation | null>(null);
-  const [badges, setBadges] = useState<
-    Array<{ id: string; topic: string; x: number; y: number }>
-  >([]);
-  const node = findElements(board, {
-    match: (element) =>
-      element.id === appState.openNoteId &&
-      MindElement.isMindElement(board, element),
-    recursion: () => true,
-  })[0] as MindElement | undefined;
+  const badges = useMindNodeBadges(board, (element) =>
+    hasNote(element) ? true : undefined
+  );
+  const node = findMindElement(board, appState.openNoteId);
   const note = typeof node?.note === 'string' ? node.note : '';
   const [draft, setDraft] = useState(note);
 
@@ -76,53 +68,7 @@ export const MindmapNotes = () => {
       setAppState((state) => ({ ...state, openNoteId: null }));
   }, [node?.id, appState.openNoteId, setAppState]);
 
-  // react-board advances its version after Plait refreshes layout references.
-  // A local draft render can see new children before those references exist.
-  useEffect(() => {
-    const host = PlaitBoard.getBoardContainer(board).closest('.drawnix');
-    if (!host) return;
-    const updatePositions = () => {
-      if (FLUSHING.get(board)) return;
-      const bounds = host.getBoundingClientRect();
-      const nodes = findElements(board, {
-        match: (element) =>
-          MindElement.isMindElement(board, element) &&
-          typeof element.note === 'string' &&
-          !!element.note,
-        recursion: (element) => !element.isCollapsed,
-      }) as MindElement[];
-      setBadges(
-        nodes.map((element) => {
-          const rect = getRectangleByElements(board, [element], false);
-          const hostPoint = toHostPointFromViewBoxPoint(board, [
-            rect.x + rect.width,
-            rect.y,
-          ]);
-          const [screenX, screenY] = toScreenPointFromHostPoint(
-            board,
-            hostPoint
-          );
-          return {
-            id: element.id,
-            topic: Node.string(element.data.topic),
-            x: screenX - bounds.left + 5,
-            y: screenY - bounds.top - 8,
-          };
-        })
-      );
-    };
-    updatePositions();
-    const observer = new ResizeObserver(updatePositions);
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, [board, boardVersion]);
-
-  const close = () => {
-    setAppState((state) => ({ ...state, openNoteId: null }));
-    const host =
-      PlaitBoard.getBoardContainer(board).closest<HTMLElement>('.drawnix');
-    host?.focus({ preventScroll: true });
-  };
+  const close = () => closeMindWidgetPanel(board, setAppState);
 
   return (
     <>
@@ -137,9 +83,7 @@ export const MindmapNotes = () => {
             title={`${t('notes.open')}: ${badge.topic}`}
             aria-label={`${t('notes.open')}: ${badge.topic}`}
             onPointerDown={(event) => event.stopPropagation()}
-            onClick={() =>
-              setAppState((state) => ({ ...state, openNoteId: badge.id }))
-            }
+            onClick={() => openMindWidget(setAppState, 'note', badge.id)}
           >
             {NoteIcon}
           </button>
@@ -149,28 +93,7 @@ export const MindmapNotes = () => {
         <aside
           className={`drawnix-note-panel ${ATTACHED_ELEMENT_CLASS_NAME}`}
           aria-label={t('notes.title')}
-          onPointerDown={(event) => event.stopPropagation()}
-          onWheel={(event) => event.stopPropagation()}
-          onCopy={(event) => event.stopPropagation()}
-          onCut={(event) => event.stopPropagation()}
-          onPaste={(event) => event.stopPropagation()}
-          onKeyDown={(event) => {
-            event.stopPropagation();
-            if (event.nativeEvent.isComposing) return;
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              close();
-            }
-            if (
-              (event.metaKey || event.ctrlKey) &&
-              event.key.toLowerCase() === 'z'
-            ) {
-              event.preventDefault();
-              lastInputOperation.current = null;
-              if (event.shiftKey) board.redo();
-              else board.undo();
-            }
-          }}
+          {...getMindWidgetPanelProps(board, close, lastInputOperation)}
         >
           <header>
             <span>{t('notes.title')}</span>
@@ -194,49 +117,17 @@ export const MindmapNotes = () => {
             onChange={(event) => {
               const value = event.target.value;
               // Agent edits can replace or move the node before React renders again.
-              const currentNode = findElements(board, {
-                match: (element) =>
-                  element.id === node.id &&
-                  MindElement.isMindElement(board, element),
-                recursion: () => true,
-              })[0] as MindElement | undefined;
+              const currentNode = findMindElement(board, node.id);
               if (!currentNode) return;
               // Plait notifies React asynchronously; update the input now to keep its caret.
               setDraft(value);
               if (value === (currentNode.note || '')) return;
-
-              const previousBatch =
-                board.history.undos[board.history.undos.length - 1];
-              const previousOperation =
-                previousBatch?.[previousBatch.length - 1];
-              const shouldMerge =
-                lastInputOperation.current &&
-                previousOperation === lastInputOperation.current &&
-                board.history.redos.length === 0;
-              const updateHistory = shouldMerge
-                ? PlaitHistoryBoard.withMerging
-                : PlaitHistoryBoard.withNewBatch;
-              updateHistory(board, () => {
-                Transforms.setNode(
-                  board,
-                  { note: value || undefined },
-                  PlaitBoard.findPath(board, currentNode)
-                );
-              });
-              const batch = board.history.undos[board.history.undos.length - 1];
-              const operation = batch[batch.length - 1];
-              if (
-                shouldMerge &&
-                previousOperation?.type === 'set_node' &&
-                operation.type === 'set_node'
-              ) {
-                // Notes store full strings; retain only the first and latest values.
-                batch.splice(batch.length - 2, 2, {
-                  ...previousOperation,
-                  newProperties: operation.newProperties,
-                });
-              }
-              lastInputOperation.current = batch[batch.length - 1];
+              setNodeFromInput(
+                board,
+                currentNode,
+                { note: value || undefined },
+                lastInputOperation
+              );
             }}
           />
         </aside>

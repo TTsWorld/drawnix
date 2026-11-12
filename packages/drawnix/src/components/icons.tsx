@@ -11,6 +11,13 @@ export const NoteIcon = createIcon(
   </svg>
 );
 
+export const AnkiCardIcon = createIcon(
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="6" width="14" height="15" rx="2" />
+    <path d="M7 3h12a2 2 0 0 1 2 2v12M7 11h6M7 15h4" />
+  </svg>
+);
+
 export const HandIcon = createIcon(
   <svg viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <g id="Hand" stroke="none" fill="currentColor">
