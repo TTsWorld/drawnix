@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type React from 'react';
 import { useBoard } from '@plait-board/react-board';
 import {
   ATTACHED_ELEMENT_CLASS_NAME,
@@ -11,14 +12,30 @@ import {
 import { MindElement } from '@plait/mind';
 import { Node } from 'slate';
 import {
+  ANKI_CARD_IMAGE_FIELDS,
   createAnkiCardId,
   getAnkiCards,
   parseAnkiTags,
   type MindmapAnkiCard,
+  type MindmapAnkiCardMedia,
+  type MindmapAnkiCardSide,
 } from '../anki-cards';
+import {
+  ANKI_IMAGE_ACCEPT,
+  AnkiImageError,
+  checkDocumentBudget,
+  createAnkiCardImage,
+  DOCUMENT_SIZE_WARNING,
+  formatMiB,
+  getImageFiles,
+  getUtf8Size,
+  hasFiles,
+  type AnkiImageCodec,
+} from '../anki-card-images';
+import { serializeDrawnixBoard } from '../editor';
 import { useDrawnix } from '../hooks/use-drawnix';
-import { useI18n } from '../i18n';
-import { AnkiCardIcon } from './icons';
+import { useI18n, type Translations } from '../i18n';
+import { AnkiCardIcon, ImageIcon, TrashIcon } from './icons';
 import { ToolButton } from './tool-button';
 import {
   closeMindWidgetPanel,
@@ -33,6 +50,8 @@ import './mindmap-anki-cards.scss';
 
 // The note badge (24px) and a 4px gap come first when a node has both.
 const NOTE_BADGE_OFFSET = 28;
+const NEW_CARD_OPTION = '__new__';
+const SIDES: MindmapAnkiCardSide[] = ['front', 'back'];
 
 type RawCard = Record<string, unknown>;
 
@@ -47,6 +66,12 @@ export function createAnkiCardForNode(element: MindElement): MindmapAnkiCard {
     front: Node.string(element.data.topic),
     back: typeof element.note === 'string' ? element.note : '',
   };
+}
+
+/** Tests replace the canvas codec; the browser codec is the default. */
+let imageCodec: AnkiImageCodec | undefined;
+export function setAnkiImageCodecForTesting(codec?: AnkiImageCodec) {
+  imageCodec = codec;
 }
 
 export const MindmapAnkiCardButton = () => {
@@ -72,11 +97,19 @@ export const MindmapAnkiCardButton = () => {
   );
 };
 
-const frontSelector = (cardId: string) =>
-  `[id="drawnix-anki-${cardId}-front"]`;
+const fieldId = (cardId: string, field: string) =>
+  `drawnix-anki-${cardId}-${field}`;
+const fieldSelector = (cardId: string, field: string) =>
+  `[id="${fieldId(cardId, field)}"]`;
 
 const normalizeText = (text: string) => text;
 const normalizeTags = (text: string) => parseAnkiTags(text).join(' ');
+
+function summarize(text: string, empty: string) {
+  const line = text.trim().split(/\r?\n/)[0]?.trim() ?? '';
+  if (!line) return empty;
+  return line.length > 24 ? `${line.slice(0, 24)}…` : line;
+}
 
 const AnkiCardField = ({
   id,
@@ -120,20 +153,51 @@ const AnkiCardField = ({
     },
   };
   return multiline ? (
-    <textarea rows={2} {...props} />
+    <textarea rows={3} {...props} />
   ) : (
     <input type="text" autoComplete="off" spellCheck={false} {...props} />
   );
 };
+
+type Notice = { kind: 'error' | 'warning' | 'status'; text: string };
+
+function imageErrorText(
+  error: unknown,
+  t: (key: keyof Translations) => string,
+  projected?: number
+) {
+  const code = error instanceof AnkiImageError ? error.code : 'unreadable';
+  if (code === 'unsupported') return t('anki.imageUnsupported');
+  if (code === 'too-large') return t('anki.imageTooLarge');
+  if (code === 'document-full') {
+    return t('anki.documentFull').replace('{size}', formatMiB(projected ?? 0));
+  }
+  return t('anki.imageUnreadable');
+}
 
 export const MindmapAnkiCards = () => {
   const board = useBoard();
   const { t } = useI18n();
   const { appState, setAppState } = useDrawnix();
   const panel = useRef<HTMLElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const previewReturnFocus = useRef<HTMLElement | null>(null);
   const lastInputOperation = useRef<PlaitOperation | null>(null);
   // Selector of the element to focus once it has rendered.
   const [pendingFocus, setPendingFocus] = useState<string | null>(null);
+  const [selection, setSelection] = useState<{
+    nodeId: string;
+    cardId: string | null;
+    side: MindmapAnkiCardSide;
+  } | null>(null);
+  const lastIndex = useRef<{ nodeId?: string; index: number }>({ index: 0 });
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [preview, setPreview] = useState<{
+    url: string;
+    label: string;
+  } | null>(null);
   const badges = useMindNodeBadges(board, (element) => {
     const count = getAnkiCards(element).length;
     return count
@@ -143,9 +207,34 @@ export const MindmapAnkiCards = () => {
   const node = findMindElement(board, appState.openAnkiCardsId);
   const cards = getAnkiCards(node);
 
+  // The selected card survives undo/redo; if it disappears, select its
+  // neighbour at the same position.
+  const ownSelection =
+    selection && node && selection.nodeId === node.id ? selection : null;
+  let index = cards.findIndex((card) => card.id === ownSelection?.cardId);
+  if (index < 0) {
+    const previous =
+      lastIndex.current.nodeId === node?.id ? lastIndex.current.index : 0;
+    index = Math.max(0, Math.min(previous, cards.length - 1));
+  }
+  lastIndex.current = { nodeId: node?.id, index };
+  const current: MindmapAnkiCard | undefined = cards[index];
+  const side: MindmapAnkiCardSide = ownSelection?.side ?? 'front';
+  const cardName = `${t('anki.card')} ${index + 1}`;
+
+  const select = (cardId: string | null, nextSide = side) => {
+    if (!node) return;
+    lastInputOperation.current = null;
+    setNotice(null);
+    setSelection({ nodeId: node.id, cardId, side: nextSide });
+  };
+
   useEffect(() => {
     lastInputOperation.current = null;
     setPendingFocus(null);
+    setNotice(null);
+    setPreview(null);
+    setDragging(false);
     if (node) {
       panel.current
         ?.querySelector<HTMLElement>('textarea, .drawnix-anki-add')
@@ -155,15 +244,22 @@ export const MindmapAnkiCards = () => {
     }
   }, [node?.id, appState.openAnkiCardsId, setAppState]);
 
-  // A new card renders after Plait's asynchronous change notification.
+  // New cards and switched tabs render after Plait's asynchronous notification.
   useEffect(() => {
     if (!pendingFocus) return;
     const field = panel.current?.querySelector<HTMLElement>(pendingFocus);
     if (!field) return;
     field.focus();
-    field.scrollIntoView?.({ block: 'nearest' });
     setPendingFocus(null);
-  }, [pendingFocus, cards.length]);
+  }, [pendingFocus, cards.length, current?.id, side]);
+
+  useEffect(() => {
+    if (preview) {
+      panel.current
+        ?.querySelector<HTMLElement>('.drawnix-anki-preview button')
+        ?.focus();
+    }
+  }, [preview]);
 
   /**
    * Applies a card change to the node in the current document. `update`
@@ -196,31 +292,73 @@ export const MindmapAnkiCards = () => {
     return true;
   };
 
-  const setCardField = (
+  const updateCard = (
     nodeId: string,
     cardId: string,
-    field: 'front' | 'back' | 'tags',
-    value: string | string[]
+    update: (card: RawCard) => RawCard | null,
+    fromInput: boolean
   ) =>
     updateCards(
       nodeId,
       (raw) => {
-        const index = raw.findIndex((card) => card?.id === cardId);
-        if (index < 0) return null;
-        const card = { ...raw[index] };
-        if (field === 'tags') {
-          const tags = value as string[];
-          const current = Array.isArray(card.tags) ? card.tags : [];
-          if (current.join(' ') === tags.join(' ')) return null;
-          if (tags.length) card.tags = tags;
-          else delete card.tags;
-        } else {
-          if (card[field] === value) return null;
-          card[field] = value;
-        }
-        return raw.map((item, i) => (i === index ? card : item));
+        const at = raw.findIndex((card) => card?.id === cardId);
+        if (at < 0) return null;
+        const card = update({ ...raw[at] });
+        return card ? raw.map((item, i) => (i === at ? card : item)) : null;
+      },
+      fromInput
+    );
+
+  const setText = (
+    nodeId: string,
+    cardId: string,
+    field: MindmapAnkiCardSide,
+    value: string
+  ) =>
+    updateCard(
+      nodeId,
+      cardId,
+      (card) => {
+        if (card[field] === value) return null;
+        card[field] = value;
+        return card;
       },
       true
+    );
+
+  const setTags = (nodeId: string, cardId: string, tags: string[]) =>
+    updateCard(
+      nodeId,
+      cardId,
+      (card) => {
+        const current = Array.isArray(card.tags) ? card.tags : [];
+        if (current.join(' ') === tags.join(' ')) return null;
+        if (tags.length) card.tags = tags;
+        else delete card.tags;
+        return card;
+      },
+      true
+    );
+
+  const setImages = (
+    nodeId: string,
+    cardId: string,
+    imageSide: MindmapAnkiCardSide,
+    change: (images: unknown[]) => unknown[]
+  ) =>
+    updateCard(
+      nodeId,
+      cardId,
+      (card) => {
+        const field = ANKI_CARD_IMAGE_FIELDS[imageSide];
+        const images = change(
+          Array.isArray(card[field]) ? (card[field] as unknown[]) : []
+        );
+        if (images.length) card[field] = images;
+        else delete card[field];
+        return card;
+      },
+      false
     );
 
   const addCard = () => {
@@ -234,33 +372,115 @@ export const MindmapAnkiCards = () => {
       },
       false
     );
-    if (created) setPendingFocus(frontSelector(created.id));
+    if (created) {
+      select(created.id, 'front');
+      setPendingFocus(fieldSelector(created.id, 'front'));
+    }
   };
 
-  const deleteCard = (cardId: string) => {
-    if (!node) return;
-    const index = cards.findIndex((card) => card.id === cardId);
+  const deleteCard = () => {
+    if (!node || !current) return;
+    const neighbour = cards[index + 1] ?? cards[index - 1];
     updateCards(
       node.id,
-      (raw) => raw.filter((card) => card?.id !== cardId),
+      (raw) => raw.filter((card) => card?.id !== current.id),
       false
     );
-    const neighbour = cards[index + 1] ?? cards[index - 1];
+    select(neighbour?.id ?? null);
     setPendingFocus(
-      neighbour ? frontSelector(neighbour.id) : '.drawnix-anki-add'
+      neighbour ? fieldSelector(neighbour.id, side) : '.drawnix-anki-add'
     );
+  };
+
+  const addImages = async (files: File[]) => {
+    if (!node || !current || busy || !files.length) return;
+    const target = { nodeId: node.id, cardId: current.id, side };
+    setBusy(true);
+    setNotice({ kind: 'status', text: t('anki.imagesAdding') });
+    const added: MindmapAnkiCardMedia[] = [];
+    let failure: Notice | null = null;
+    for (const file of files) {
+      try {
+        added.push(await createAnkiCardImage(file, imageCodec));
+      } catch (error) {
+        failure ??= { kind: 'error', text: imageErrorText(error, t) };
+      }
+    }
+    let warning: Notice | null = null;
+    if (added.length) {
+      const size = getUtf8Size(serializeDrawnixBoard(board));
+      try {
+        const projected = checkDocumentBudget(
+          size,
+          added.map((image) => image.url)
+        );
+        setImages(target.nodeId, target.cardId, target.side, (images) => [
+          ...images,
+          ...added,
+        ]);
+        if (projected > DOCUMENT_SIZE_WARNING) {
+          warning = {
+            kind: 'warning',
+            text: t('anki.documentLarge').replace(
+              '{size}',
+              formatMiB(projected)
+            ),
+          };
+        }
+      } catch (error) {
+        const projected =
+          size + added.reduce((total, image) => total + image.url.length, 0);
+        failure = { kind: 'error', text: imageErrorText(error, t, projected) };
+      }
+    }
+    setBusy(false);
+    setNotice(
+      failure ??
+        warning ??
+        (added.length ? { kind: 'status', text: t('anki.imagesAdded') } : null)
+    );
+  };
+
+  const removeImage = (imageId: string) => {
+    if (!node || !current) return;
+    setNotice(null);
+    setImages(node.id, current.id, side, (images) =>
+      images.filter(
+        (image) => (image as { id?: unknown } | null)?.id !== imageId
+      )
+    );
+    setPendingFocus('.drawnix-anki-image-add');
   };
 
   const close = () => closeMindWidgetPanel(board, setAppState);
+  const closePreview = () => {
+    setPreview(null);
+    previewReturnFocus.current?.focus();
+  };
   const endInput = () => {
     lastInputOperation.current = null;
   };
+  const panelProps = getMindWidgetPanelProps(board, close, lastInputOperation);
+
+  /** Pasted or dropped files go to the current side; never to the board. */
+  const takeFiles = (data: DataTransfer | null) => {
+    const files = getImageFiles(data);
+    if (!files.length) {
+      setNotice({ kind: 'error', text: t('anki.imageUnsupported') });
+      return;
+    }
+    void addImages(files);
+  };
+
+  const images = current ? current[ANKI_CARD_IMAGE_FIELDS[side]] ?? [] : [];
 
   return (
     <>
       <div className="drawnix-anki-badges">
         {badges.map((badge) => {
-          const label = `${t('anki.open')}: ${badge.topic} (${badge.value.count})`;
+          const label = `${t('anki.open')}: ${badge.topic} (${
+            badge.value.count
+          })`;
           return (
             <button
               key={badge.id}
@@ -282,9 +502,60 @@ export const MindmapAnkiCards = () => {
       {node && (
         <aside
           ref={panel}
-          className={`drawnix-anki-panel ${ATTACHED_ELEMENT_CLASS_NAME}`}
+          className={`drawnix-anki-panel ${ATTACHED_ELEMENT_CLASS_NAME} ${
+            dragging ? 'drawnix-anki-panel--dragging' : ''
+          }`}
           aria-label={t('anki.title')}
-          {...getMindWidgetPanelProps(board, close, lastInputOperation)}
+          {...panelProps}
+          onKeyDown={(event) => {
+            if (preview && event.key === 'Escape') {
+              event.stopPropagation();
+              event.preventDefault();
+              closePreview();
+              return;
+            }
+            panelProps.onKeyDown?.(event);
+          }}
+          onPaste={(event) => {
+            event.stopPropagation();
+            // Office apps put an image next to copied text; text wins.
+            if (
+              !hasFiles(event.clipboardData) ||
+              event.clipboardData.getData('text/plain').trim()
+            ) {
+              return;
+            }
+            // Image paste belongs to the current card side, not the textarea.
+            event.preventDefault();
+            if (current) takeFiles(event.clipboardData);
+          }}
+          onDragEnter={(event) => {
+            event.stopPropagation();
+            if (hasFiles(event.dataTransfer) && current) setDragging(true);
+          }}
+          onDragOver={(event) => {
+            event.stopPropagation();
+            if (!hasFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = current ? 'copy' : 'none';
+          }}
+          onDragLeave={(event) => {
+            event.stopPropagation();
+            if (
+              !event.currentTarget.contains(
+                event.relatedTarget as HTMLElement | null
+              )
+            ) {
+              setDragging(false);
+            }
+          }}
+          onDrop={(event) => {
+            event.stopPropagation();
+            setDragging(false);
+            if (!hasFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            if (current) takeFiles(event.dataTransfer);
+          }}
         >
           <header>
             <span>
@@ -302,77 +573,211 @@ export const MindmapAnkiCards = () => {
               ×
             </button>
           </header>
-          <div className="drawnix-anki-list">
-            {cards.length === 0 && (
-              <p className="drawnix-anki-empty">{t('anki.empty')}</p>
-            )}
-            {cards.map((card, index) => {
-              const name = `${t('anki.card')} ${index + 1}`;
-              const fieldId = (field: string) =>
-                `drawnix-anki-${card.id}-${field}`;
-              return (
-                <section
-                  key={card.id}
-                  className="drawnix-anki-card"
-                  aria-label={name}
-                  data-anki-card-id={card.id}
+          {!current ? (
+            <div className="drawnix-anki-empty">
+              <p>{t('anki.empty')}</p>
+              <button
+                type="button"
+                className="drawnix-anki-add"
+                onClick={addCard}
+              >
+                + {t('anki.new')}
+              </button>
+            </div>
+          ) : (
+            <section
+              className="drawnix-anki-card"
+              aria-label={cardName}
+              data-anki-card-id={current.id}
+            >
+              <div className="drawnix-anki-card-bar">
+                <select
+                  aria-label={t('anki.select')}
+                  value={current.id}
+                  onChange={(event) => {
+                    if (event.target.value === NEW_CARD_OPTION) addCard();
+                    else select(event.target.value);
+                  }}
                 >
-                  <div className="drawnix-anki-card-header">
-                    <span>{name}</span>
+                  {cards.map((card, i) => (
+                    <option key={card.id} value={card.id}>
+                      {`${t('anki.card')} ${i + 1} · ${summarize(
+                        card.front,
+                        t('anki.emptyFront')
+                      )}`}
+                    </option>
+                  ))}
+                  <option value={NEW_CARD_OPTION}>+ {t('anki.new')}</option>
+                </select>
+                <button
+                  type="button"
+                  className="drawnix-anki-delete"
+                  aria-label={`${t('anki.delete')}: ${cardName}`}
+                  title={t('anki.delete')}
+                  onClick={deleteCard}
+                >
+                  {TrashIcon}
+                </button>
+              </div>
+              <div
+                className="drawnix-anki-tabs"
+                role="tablist"
+                aria-label={t('anki.sides')}
+                onKeyDown={(event) => {
+                  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+                    return;
+                  }
+                  event.preventDefault();
+                  const next = side === 'front' ? 'back' : 'front';
+                  select(current.id, next);
+                  setPendingFocus(
+                    `[id="${fieldId(current.id, `tab-${next}`)}"]`
+                  );
+                }}
+              >
+                {SIDES.map((value) => {
+                  const count = current[ANKI_CARD_IMAGE_FIELDS[value]]?.length;
+                  return (
                     <button
+                      key={value}
+                      id={fieldId(current.id, `tab-${value}`)}
                       type="button"
-                      aria-label={`${t('anki.delete')}: ${name}`}
-                      title={t('anki.delete')}
-                      onClick={() => deleteCard(card.id)}
+                      role="tab"
+                      aria-selected={side === value}
+                      aria-controls={fieldId(current.id, `panel-${value}`)}
+                      tabIndex={side === value ? 0 : -1}
+                      onClick={() => select(current.id, value)}
                     >
-                      ×
+                      {t(value === 'front' ? 'anki.front' : 'anki.back')}
+                      {!!count && (
+                        <span className="drawnix-anki-tab-count" aria-hidden>
+                          {ImageIcon}
+                          {count}
+                        </span>
+                      )}
                     </button>
-                  </div>
-                  <label htmlFor={fieldId('front')}>{t('anki.front')}</label>
-                  <AnkiCardField
-                    id={fieldId('front')}
-                    label={`${name} ${t('anki.front')}`}
-                    value={card.front}
-                    multiline
-                    onBlur={endInput}
-                    onInput={(text) =>
-                      setCardField(node.id, card.id, 'front', text)
-                    }
+                  );
+                })}
+              </div>
+              <div
+                className="drawnix-anki-side"
+                role="tabpanel"
+                id={fieldId(current.id, `panel-${side}`)}
+                aria-labelledby={fieldId(current.id, `tab-${side}`)}
+              >
+                <AnkiCardField
+                  key={`${current.id}-${side}`}
+                  id={fieldId(current.id, side)}
+                  label={`${cardName} ${t(
+                    side === 'front' ? 'anki.front' : 'anki.back'
+                  )}`}
+                  value={current[side]}
+                  multiline
+                  onBlur={endInput}
+                  onInput={(text) => setText(node.id, current.id, side, text)}
+                />
+                <div className="drawnix-anki-images">
+                  {images.map((image, i) => {
+                    const label = `${t('anki.image')} ${i + 1}`;
+                    return (
+                      <div
+                        key={image.id}
+                        className="drawnix-anki-image"
+                        data-anki-image-id={image.id}
+                      >
+                        <button
+                          type="button"
+                          className="drawnix-anki-image-preview"
+                          aria-label={`${t('anki.previewImage')}: ${label}`}
+                          title={t('anki.previewImage')}
+                          onClick={(event) => {
+                            previewReturnFocus.current = event.currentTarget;
+                            setPreview({ url: image.url, label });
+                          }}
+                        >
+                          <img src={image.url} alt={label} draggable={false} />
+                        </button>
+                        <button
+                          type="button"
+                          className="drawnix-anki-image-remove"
+                          aria-label={`${t('anki.removeImage')}: ${label}`}
+                          title={t('anki.removeImage')}
+                          onClick={() => removeImage(image.id)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="drawnix-anki-image-add"
+                    aria-label={t('anki.addImage')}
+                    title={t('anki.addImage')}
+                    disabled={busy}
+                    onClick={() => fileInput.current?.click()}
+                  >
+                    {ImageIcon}
+                    <span>{t('anki.addImage')}</span>
+                  </button>
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept={ANKI_IMAGE_ACCEPT}
+                    multiple
+                    hidden
+                    data-testid="drawnix-anki-image-input"
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? []);
+                      event.target.value = '';
+                      void addImages(files);
+                    }}
                   />
-                  <label htmlFor={fieldId('back')}>{t('anki.back')}</label>
-                  <AnkiCardField
-                    id={fieldId('back')}
-                    label={`${name} ${t('anki.back')}`}
-                    value={card.back}
-                    multiline
-                    onBlur={endInput}
-                    onInput={(text) =>
-                      setCardField(node.id, card.id, 'back', text)
-                    }
-                  />
-                  <label htmlFor={fieldId('tags')}>{t('anki.tags')}</label>
-                  <AnkiCardField
-                    id={fieldId('tags')}
-                    label={`${name} ${t('anki.tags')}`}
-                    value={(card.tags ?? []).join(' ')}
-                    placeholder={t('anki.tagsPlaceholder')}
-                    normalize={normalizeTags}
-                    onBlur={endInput}
-                    onInput={(text) =>
-                      setCardField(node.id, card.id, 'tags', parseAnkiTags(text))
-                    }
-                  />
-                </section>
-              );
-            })}
-          </div>
-          <button
-            type="button"
-            className="drawnix-anki-add"
-            onClick={addCard}
-          >
-            + {t('anki.new')}
-          </button>
+                </div>
+                <p className="drawnix-anki-hint">{t('anki.imageHint')}</p>
+                {notice && (
+                  <p
+                    className={`drawnix-anki-notice drawnix-anki-notice--${notice.kind}`}
+                    role={notice.kind === 'error' ? 'alert' : 'status'}
+                  >
+                    {notice.text}
+                  </p>
+                )}
+              </div>
+              <label htmlFor={fieldId(current.id, 'tags')}>
+                {t('anki.tags')}
+              </label>
+              <AnkiCardField
+                key={`${current.id}-tags`}
+                id={fieldId(current.id, 'tags')}
+                label={`${cardName} ${t('anki.tags')}`}
+                value={(current.tags ?? []).join(' ')}
+                placeholder={t('anki.tagsPlaceholder')}
+                normalize={normalizeTags}
+                onBlur={endInput}
+                onInput={(text) =>
+                  setTags(node.id, current.id, parseAnkiTags(text))
+                }
+              />
+            </section>
+          )}
+          {preview && (
+            <div
+              className="drawnix-anki-preview"
+              role="dialog"
+              aria-label={preview.label}
+            >
+              <button
+                type="button"
+                aria-label={t('anki.closePreview')}
+                title={t('anki.closePreview')}
+                onClick={closePreview}
+              >
+                ×
+              </button>
+              <img src={preview.url} alt={preview.label} />
+            </div>
+          )}
         </aside>
       )}
     </>

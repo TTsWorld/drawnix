@@ -374,3 +374,50 @@ describe('Anki card IDs on paste', () => {
     expect(pasteInto()).not.toBe('b1');
   });
 });
+
+describe('Anki card images', () => {
+  const image = (id: string) => ({
+    id,
+    url: `data:image/png;base64,${id}`,
+    mimeType: 'image/png',
+    width: 10,
+    height: 5,
+  });
+
+  it('exports images of both sides and keeps old cards without them', () => {
+    const { board, editor, childIds } = setup();
+    setCards(
+      board,
+      [0, 0],
+      [
+        {
+          ...card('a1'),
+          frontImages: [image('f1')],
+          backImages: [image('b1'), null],
+        },
+        card('a2'),
+      ]
+    );
+    const [entry] = getMindmapAnkiCards(
+      parseDrawnixDocument(editor.serialize()).elements
+    );
+    expect(entry.nodeId).toBe(childIds[0]);
+    expect(entry.cards).toEqual([
+      { ...card('a1'), frontImages: [image('f1')], backImages: [image('b1')] },
+      card('a2'),
+    ]);
+  });
+
+  it('copies images with a copied card, which gets a new ID', () => {
+    const { board } = setup();
+    setCards(board, [0, 0], [{ ...card('a1'), backImages: [image('b1')] }]);
+    const [pasted] = prepareAnkiCardsForPaste(
+      [copyNewNode(board.children[0] as MindElement)],
+      board.children,
+      new Set()
+    );
+    const [copied] = getMindmapAnkiCards([pasted])[0].cards;
+    expect(copied.id).not.toBe('a1');
+    expect(copied.backImages).toEqual([image('b1')]);
+  });
+});

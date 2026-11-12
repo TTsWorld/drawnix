@@ -8,15 +8,40 @@ import { Node } from 'slate';
  * transforms (for example when removing an emoji).
  *
  * `front` and `back` are plain multiline text; exporters convert them to
- * Anki's HTML fields. `id` is stable for the life of the card so that repeated
- * exports can use it as the Anki note GUID.
+ * Anki's HTML fields. `frontImages` and `backImages` are images shown after the
+ * text of that side, in order. `id` is stable for the life of the card so
+ * that repeated exports can use it as the Anki note GUID.
  */
 export interface MindmapAnkiCard {
   id: string;
   front: string;
   back: string;
   tags?: string[];
+  frontImages?: MindmapAnkiCardMedia[];
+  backImages?: MindmapAnkiCardMedia[];
 }
+
+/**
+ * An image on one side of a card, stored inline as a data URL like other
+ * Drawnix images. `id` never changes and an image is never edited in place,
+ * so equal IDs mean equal content (exporters can use it as the media file
+ * name).
+ */
+export interface MindmapAnkiCardMedia {
+  id: string;
+  /** `data:` URL (images added in the panel) or an external URL. */
+  url: string;
+  mimeType: string;
+  width: number;
+  height: number;
+}
+
+export type MindmapAnkiCardSide = 'front' | 'back';
+
+export const ANKI_CARD_IMAGE_FIELDS = {
+  front: 'frontImages',
+  back: 'backImages',
+} as const;
 
 export interface MindmapAnkiCardImage {
   url: string;
@@ -67,6 +92,42 @@ function isStoredAnkiCard(card: unknown): card is StoredAnkiCard {
   );
 }
 
+function getMimeType(url: string): string {
+  return /^data:([^;,]+)[;,]/.exec(url)?.[1] ?? '';
+}
+
+/** Reads one side's images, ignoring malformed entries. */
+export function getAnkiCardImages(value: unknown): MindmapAnkiCardMedia[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (image): image is Record<string, unknown> =>
+        !!image &&
+        typeof image === 'object' &&
+        typeof image.id === 'string' &&
+        !!image.id &&
+        typeof image.url === 'string' &&
+        !!image.url
+    )
+    .map((image) => {
+      const url = image.url as string;
+      const number = (value: unknown) =>
+        typeof value === 'number' && Number.isFinite(value) && value > 0
+          ? value
+          : 0;
+      return {
+        id: image.id as string,
+        url,
+        mimeType:
+          typeof image.mimeType === 'string' && image.mimeType
+            ? image.mimeType
+            : getMimeType(url),
+        width: number(image.width),
+        height: number(image.height),
+      };
+    });
+}
+
 /** Reads a node's cards, ignoring malformed entries from external edits. */
 export function getAnkiCards(
   element: PlaitElement | undefined
@@ -79,11 +140,15 @@ export function getAnkiCards(
           (tag): tag is string => typeof tag === 'string' && !!tag
         )
       : [];
+    const frontImages = getAnkiCardImages(card.frontImages);
+    const backImages = getAnkiCardImages(card.backImages);
     return {
       id: card.id as string,
       front: typeof card.front === 'string' ? card.front : '',
       back: typeof card.back === 'string' ? card.back : '',
       ...(tags.length ? { tags } : {}),
+      ...(frontImages.length ? { frontImages } : {}),
+      ...(backImages.length ? { backImages } : {}),
     };
   });
 }

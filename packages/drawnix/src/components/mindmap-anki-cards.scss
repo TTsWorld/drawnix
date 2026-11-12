@@ -22,13 +22,126 @@
   .drawnix-anki-panel {
     @include widget.panel;
 
+    &.drawnix-anki-panel--dragging {
+      border-color: var(--color-primary);
+      box-shadow: var(--shadow-island), 0 0 0 3px var(--color-primary-light);
+    }
+
     .drawnix-anki-count {
       margin-left: 6px;
       font-weight: 400;
       color: var(--color-gray-60);
     }
 
-    .drawnix-anki-list {
+    .drawnix-anki-empty {
+      p {
+        margin: 0 0 8px;
+        font-size: 14px;
+        line-height: 1.8;
+        color: var(--color-gray-60);
+      }
+    }
+
+    .drawnix-anki-add {
+      padding: 4px 8px;
+      font: inherit;
+      font-size: 14px;
+      color: var(--color-primary-darkest);
+    }
+
+    .drawnix-anki-card {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .drawnix-anki-card-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 12px;
+
+      select {
+        flex: 1;
+        min-width: 0;
+        height: 32px;
+        padding: 0 28px 0 8px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font: inherit;
+        font-size: 13px;
+        color: var(--color-gray-85);
+        background: var(--color-surface-lowest);
+        border: 1px solid var(--color-gray-20);
+        border-radius: 8px;
+        outline: none;
+        cursor: pointer;
+        &:hover {
+          border-color: var(--color-gray-40);
+        }
+        &:focus-visible {
+          border-color: var(--color-primary);
+        }
+      }
+    }
+
+    .drawnix-anki-delete {
+      display: grid;
+      flex: none;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      padding: 7px;
+      svg {
+        width: 18px;
+        height: 18px;
+      }
+    }
+
+    .drawnix-anki-tabs {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--color-gray-20);
+
+      [role='tab'] {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-bottom: -1px;
+        padding: 6px 0;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--color-gray-60);
+        border-bottom: 2px solid transparent;
+        border-radius: 0;
+        &:hover {
+          color: var(--color-gray-85);
+          background: transparent;
+        }
+        &[aria-selected='true'] {
+          color: var(--color-primary-darkest);
+          border-bottom-color: var(--color-primary);
+        }
+      }
+    }
+
+    .drawnix-anki-tab-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 12px;
+      font-weight: 400;
+      svg {
+        width: 13px;
+        height: 13px;
+      }
+    }
+
+    .drawnix-anki-side {
       flex: 1;
       min-height: 0;
       overflow-y: auto;
@@ -36,48 +149,14 @@
       padding: 0 20px;
     }
 
-    .drawnix-anki-empty {
-      margin: 0;
-      font-size: 14px;
-      line-height: 1.8;
-      color: var(--color-gray-60);
-    }
-
-    .drawnix-anki-card {
-      padding-bottom: 14px;
-      & + .drawnix-anki-card {
-        padding-top: 14px;
-        border-top: 1px solid var(--color-gray-20);
-      }
-    }
-
-    .drawnix-anki-card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 4px;
-      span {
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--color-gray-60);
-      }
-      button {
-        display: grid;
-        place-items: center;
-        width: 22px;
-        height: 22px;
-        padding: 0;
-        font-size: 18px;
-        line-height: 1;
-      }
-    }
-
     label {
       display: block;
-      margin-top: 6px;
+      margin-top: 12px;
+      padding-top: 12px;
       font-size: 12px;
       line-height: 18px;
       color: var(--color-gray-60);
+      border-top: 1px solid var(--color-gray-20);
     }
 
     textarea,
@@ -88,21 +167,119 @@
       }
     }
     textarea {
-      min-height: 50px;
+      min-height: 76px;
       field-sizing: content;
     }
 
-    .drawnix-anki-add {
-      flex: none;
-      align-self: flex-start;
-      margin-top: 12px;
-      padding: 4px 8px;
-      font: inherit;
-      font-size: 14px;
-      color: var(--color-primary-darkest);
+    .drawnix-anki-images {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
     }
 
-    &:has(textarea:focus-visible, input:focus-visible) {
+    .drawnix-anki-image {
+      position: relative;
+      width: 72px;
+      height: 72px;
+    }
+
+    .drawnix-anki-image-preview {
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      overflow: hidden;
+      border: 1px solid var(--color-gray-20);
+      border-radius: 6px;
+      img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    }
+
+    .drawnix-anki-image-remove {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      display: grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      padding: 0;
+      font-size: 14px;
+      line-height: 1;
+      color: var(--color-gray-60);
+      background: var(--color-surface-lowest);
+      border: 1px solid var(--color-gray-20);
+      border-radius: 50%;
+    }
+
+    .drawnix-anki-image-add {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      width: 72px;
+      height: 72px;
+      padding: 4px;
+      font: inherit;
+      font-size: 11px;
+      border: 1px dashed var(--color-gray-40);
+      border-radius: 6px;
+      svg {
+        width: 18px;
+        height: 18px;
+      }
+      &:disabled {
+        cursor: progress;
+        opacity: 0.6;
+      }
+    }
+
+    .drawnix-anki-hint,
+    .drawnix-anki-notice {
+      margin: 6px 0 0;
+      font-size: 12px;
+      line-height: 18px;
+      color: var(--color-gray-60);
+    }
+    .drawnix-anki-notice--error {
+      color: var(--color-danger, #d93025);
+    }
+    .drawnix-anki-notice--warning {
+      color: #b06000;
+    }
+
+    .drawnix-anki-preview {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      padding: 48px 20px 20px;
+      background: var(--color-surface-lowest);
+      border-radius: 12px;
+      img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+      }
+      button {
+        position: absolute;
+        top: 14px;
+        right: 16px;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        font-size: 22px;
+        line-height: 1;
+      }
+    }
+
+    &:has(textarea:focus-visible, input:focus-visible, select:focus-visible) {
       border-color: var(--color-gray-40);
     }
   }

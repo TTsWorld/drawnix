@@ -9,7 +9,11 @@ import {
 } from '@plait/core';
 import type { MindmapAnkiCard } from '../anki-cards';
 import { createMindmapDocument } from '../editor';
-import { MindmapAnkiCards } from './mindmap-anki-cards';
+import {
+  MindmapAnkiCards,
+  setAnkiImageCodecForTesting,
+} from './mindmap-anki-cards';
+import type { AnkiImageCodec } from '../anki-card-images';
 import { MindmapNotes } from './mindmap-notes';
 import { renderMindmapWidgets } from '../testing/mindmap-widget-harness';
 
@@ -108,8 +112,12 @@ describe('mind-map Anki cards', () => {
     const front = field('卡片 1 正面');
     for (const value of ['Q1', 'Q12', 'Q123']) await type(front, value);
     fireEvent.blur(front);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('tab', { name: '背面' }));
+    });
     const back = field('卡片 1 背面');
     await type(back, 'A1');
+    const stored = () => editor.readAnkiCards()[0].cards[0];
     expect(editor.readAnkiCards()[0].cards).toEqual([
       { id: 'c1', front: 'Q123', back: 'A1' },
     ]);
@@ -117,15 +125,15 @@ describe('mind-map Anki cards', () => {
       fireEvent.keyDown(back, { key: 'z', ctrlKey: true });
     });
     expect(back.value).toBe('A');
-    expect(front.value).toBe('Q123');
+    expect(stored().front).toBe('Q123');
     await act(async () => {
       fireEvent.keyDown(back, { key: 'z', metaKey: true });
     });
-    expect(front.value).toBe('Q');
+    expect(stored().front).toBe('Q');
     await act(async () => {
       fireEvent.keyDown(back, { key: 'z', ctrlKey: true, shiftKey: true });
     });
-    expect(front.value).toBe('Q123');
+    expect(stored().front).toBe('Q123');
     expect(board.history.redos).toHaveLength(1);
   });
 
@@ -182,9 +190,7 @@ describe('mind-map Anki cards', () => {
 
   it('keeps unknown card fields when editing', async () => {
     const { editor } = await setup({
-      cards: [
-        { id: 'c1', front: 'Q', back: 'A', extra: 1 } as MindmapAnkiCard,
-      ],
+      cards: [{ id: 'c1', front: 'Q', back: 'A', extra: 1 } as MindmapAnkiCard],
     });
     await type(field('卡片 1 正面'), 'Q2');
     const stored = JSON.parse(editor.serialize()).elements[0].ankiCards;
@@ -216,7 +222,9 @@ describe('mind-map Anki cards', () => {
       name: '打开 Anki 卡片: Original (2)',
     });
     expect(badge.textContent).toBe('2');
-    const noteBadge = screen.getByRole('button', { name: '打开备注: Original' });
+    const noteBadge = screen.getByRole('button', {
+      name: '打开备注: Original',
+    });
     expect(Number.parseFloat(badge.style.left)).toBe(
       Number.parseFloat(noteBadge.style.left) + 28
     );
@@ -226,18 +234,24 @@ describe('mind-map Anki cards', () => {
     expect(
       screen.getByRole('complementary', { name: 'Anki 卡片' })
     ).toBeTruthy();
-    expect(field('卡片 2 正面').value).toBe('Q2');
+    expect(field('卡片 1 正面').value).toBe('Q1');
 
     // Notes and cards share the side panel position; one replaces the other.
     await act(async () => {
       fireEvent.click(noteBadge);
     });
-    expect(screen.queryByRole('complementary', { name: 'Anki 卡片' })).toBeNull();
-    expect(screen.getByRole('complementary', { name: '节点备注' })).toBeTruthy();
+    expect(
+      screen.queryByRole('complementary', { name: 'Anki 卡片' })
+    ).toBeNull();
+    expect(
+      screen.getByRole('complementary', { name: '节点备注' })
+    ).toBeTruthy();
     await act(async () => {
       fireEvent.click(badge);
     });
-    expect(screen.queryByRole('complementary', { name: '节点备注' })).toBeNull();
+    expect(
+      screen.queryByRole('complementary', { name: '节点备注' })
+    ).toBeNull();
   });
 
   it.each(['copy', 'cut', 'paste', 'keydown'])(
@@ -258,7 +272,7 @@ describe('mind-map Anki cards', () => {
                 cancelable: true,
               })
             : new Event(type, { bubbles: true, cancelable: true });
-        fireEvent(field('卡片 1 背面'), event);
+        fireEvent(field('卡片 1 正面'), event);
         expect(boardListener).not.toHaveBeenCalled();
         expect(event.defaultPrevented).toBe(false);
         expect(editor.serialize()).toBe(before);
@@ -313,5 +327,236 @@ describe('mind-map Anki cards', () => {
     });
     expect(editor.readAnkiCards()).toEqual([]);
     expect(screen.queryByRole('complementary')).toBeNull();
+  });
+});
+
+let encodedUrl = (type: string) => `data:${type};base64,AAAA`;
+const fakeCodec: AnkiImageCodec = {
+  decode: async () => ({ width: 2000, height: 1000, source: {} as never }),
+  encode: async (_image, _w, _h, type) => new Blob(['x'], { type }),
+  toDataUrl: async (blob) => encodedUrl(blob.type),
+};
+const png = (name = 'a.png') =>
+  new File([new Uint8Array(10)], name, { type: 'image/png' });
+const transfer = (files: File[], text = '') => ({
+  files,
+  items: [],
+  types: files.length ? ['Files'] : ['text/plain'],
+  getData: (type: string) => (type === 'text/plain' ? text : ''),
+});
+async function settle(run: () => void) {
+  await act(async () => {
+    run();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+describe('Anki card panel layout and images', () => {
+  beforeEach(() => {
+    encodedUrl = (type) => `data:${type};base64,AAAA`;
+    setAnkiImageCodecForTesting(fakeCodec);
+  });
+  afterEach(() => setAnkiImageCodecForTesting());
+
+  const twoCards = () =>
+    setup({
+      cards: [
+        { id: 'c1', front: 'First question\nmore', back: 'A1' },
+        { id: 'c2', front: '', back: 'A2' },
+      ],
+    });
+  const picker = () =>
+    screen.getByRole('combobox', { name: '选择卡片' }) as HTMLSelectElement;
+
+  it('shows one card at a time and switches with the dropdown', async () => {
+    const { editor } = await twoCards();
+    expect(screen.getAllByRole('textbox', { name: /正面/ })).toHaveLength(1);
+    expect(
+      Array.from(picker().options).map((option) => option.textContent)
+    ).toEqual([
+      '卡片 1 · First question',
+      '卡片 2 · （正面为空）',
+      '+ 新增卡片',
+    ]);
+    await act(async () => {
+      fireEvent.change(picker(), { target: { value: 'c2' } });
+    });
+    expect(field('卡片 2 正面').value).toBe('');
+    await act(async () => {
+      fireEvent.change(picker(), { target: { value: '__new__' } });
+    });
+    expect(editor.readAnkiCards()[0].cards).toHaveLength(3);
+    expect(picker().value).toBe(editor.readAnkiCards()[0].cards[2].id);
+    expect(document.activeElement).toBe(field('卡片 3 正面'));
+  });
+
+  it('switches sides with tabs and arrow keys', async () => {
+    await twoCards();
+    const front = screen.getByRole('tab', { name: '正面' });
+    expect(front.getAttribute('aria-selected')).toBe('true');
+    await act(async () => {
+      fireEvent.keyDown(front, { key: 'ArrowRight' });
+    });
+    const back = screen.getByRole('tab', { name: '背面' });
+    expect(back.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(back);
+    expect(field('卡片 1 背面').value).toBe('A1');
+    expect(screen.queryByRole('textbox', { name: '卡片 1 正面' })).toBeNull();
+    // The side is kept when switching cards.
+    await act(async () => {
+      fireEvent.change(picker(), { target: { value: 'c2' } });
+    });
+    expect(field('卡片 2 背面').value).toBe('A2');
+  });
+
+  it('keeps showing a neighbour after the selected card is undone away', async () => {
+    const { board } = await twoCards();
+    await act(async () => {
+      fireEvent.change(picker(), { target: { value: '__new__' } });
+    });
+    expect(picker().selectedIndex).toBe(2);
+    await act(async () => {
+      board.undo();
+    });
+    expect(picker().value).toBe('c2');
+  });
+
+  it('adds images from the upload button to the current side, compressed', async () => {
+    const { editor } = await twoCards();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('tab', { name: '背面' }));
+    });
+    const input = screen.getByTestId('drawnix-anki-image-input');
+    await settle(() =>
+      fireEvent.change(input, { target: { files: [png(), png('b.png')] } })
+    );
+    const [card] = editor.readAnkiCards()[0].cards;
+    expect(card.frontImages).toBeUndefined();
+    expect(card.backImages).toEqual([
+      expect.objectContaining({
+        url: 'data:image/png;base64,AAAA',
+        mimeType: 'image/png',
+        width: 1280,
+        height: 640,
+      }),
+      expect.objectContaining({ mimeType: 'image/png' }),
+    ]);
+    expect(card.backImages?.[0].id).not.toBe(card.backImages?.[1].id);
+    expect(screen.getAllByRole('img', { name: /图片/ })).toHaveLength(2);
+    expect(screen.getByRole('status').textContent).toBe('已添加图片');
+  });
+
+  it('takes pasted and dropped image files without reaching the board', async () => {
+    const { editor } = await twoCards();
+    const boardListener = vi.fn();
+    window.addEventListener('paste', boardListener);
+    window.addEventListener('drop', boardListener);
+    try {
+      const pasted = new Event('paste', { bubbles: true, cancelable: true });
+      Object.assign(pasted, { clipboardData: transfer([png()]) });
+      await settle(() => fireEvent(field('卡片 1 正面'), pasted));
+      expect(pasted.defaultPrevented).toBe(true);
+      const dropped = new Event('drop', { bubbles: true, cancelable: true });
+      Object.assign(dropped, { dataTransfer: transfer([png()]) });
+      await settle(() =>
+        fireEvent(screen.getByRole('tab', { name: '正面' }), dropped)
+      );
+      expect(dropped.defaultPrevented).toBe(true);
+      expect(boardListener).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('paste', boardListener);
+      window.removeEventListener('drop', boardListener);
+    }
+    expect(editor.readAnkiCards()[0].cards[0].frontImages).toHaveLength(2);
+  });
+
+  it('leaves text pastes to the textarea even when the clipboard has an image', async () => {
+    const { editor } = await twoCards();
+    const pasted = new Event('paste', { bubbles: true, cancelable: true });
+    Object.assign(pasted, { clipboardData: transfer([png()], 'copied text') });
+    await settle(() => fireEvent(field('卡片 1 正面'), pasted));
+    expect(pasted.defaultPrevented).toBe(false);
+    expect(editor.readAnkiCards()[0].cards[0].frontImages).toBeUndefined();
+  });
+
+  it('reports unsupported files and a full document instead of failing silently', async () => {
+    const { editor } = await twoCards();
+    const before = editor.serialize();
+    const input = screen.getByTestId('drawnix-anki-image-input');
+    await settle(() =>
+      fireEvent.change(input, {
+        target: {
+          files: [new File(['x'], 'a.pdf', { type: 'application/pdf' })],
+        },
+      })
+    );
+    expect(screen.getByRole('alert').textContent).toMatch(/不支持的图片格式/);
+    encodedUrl = (type) => `data:${type};base64,${'A'.repeat(8 * 1024 * 1024)}`;
+    await settle(() => fireEvent.change(input, { target: { files: [png()] } }));
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /图片未添加：文档会超过 8 MiB 上限（添加后约 8\.\d MiB）/
+    );
+    expect(editor.serialize()).toBe(before);
+  });
+
+  it('previews and removes images; undo restores them; Escape closes only the preview', async () => {
+    const { editor, board } = await twoCards();
+    const input = screen.getByTestId('drawnix-anki-image-input');
+    await settle(() => fireEvent.change(input, { target: { files: [png()] } }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '查看大图: 图片 1' }));
+    });
+    const dialog = screen.getByRole('dialog', { name: '图片 1' });
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: '关闭大图' })
+    );
+    await act(async () => {
+      fireEvent.keyDown(dialog, { key: 'Escape' });
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(
+      screen.getByRole('complementary', { name: 'Anki 卡片' })
+    ).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '删除图片: 图片 1' }));
+    });
+    expect(editor.readAnkiCards()[0].cards[0]).not.toHaveProperty(
+      'frontImages'
+    );
+    await act(async () => {
+      board.undo();
+    });
+    expect(editor.readAnkiCards()[0].cards[0].frontImages).toHaveLength(1);
+  });
+
+  it('loads images from saved documents and shows image counts on tabs', async () => {
+    const { editor } = await setup({
+      cards: [
+        {
+          id: 'c1',
+          front: 'Q',
+          back: 'A',
+          backImages: [
+            {
+              id: 'i1',
+              url: 'data:image/jpeg;base64,AA',
+              mimeType: '',
+              width: 3,
+              height: 2,
+            },
+          ],
+        },
+      ],
+    });
+    expect(screen.getByRole('tab', { name: '背面' }).textContent).toBe('背面1');
+    expect(editor.readAnkiCards()[0].cards[0].backImages).toEqual([
+      {
+        id: 'i1',
+        url: 'data:image/jpeg;base64,AA',
+        mimeType: 'image/jpeg',
+        width: 3,
+        height: 2,
+      },
+    ]);
   });
 });

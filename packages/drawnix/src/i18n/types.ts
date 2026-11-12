@@ -22,6 +22,22 @@ export interface Translations {
   'anki.tagsPlaceholder': string;
   'anki.delete': string;
   'anki.empty': string;
+  'anki.select': string;
+  'anki.emptyFront': string;
+  'anki.sides': string;
+  'anki.addImage': string;
+  'anki.imageHint': string;
+  'anki.image': string;
+  'anki.removeImage': string;
+  'anki.previewImage': string;
+  'anki.closePreview': string;
+  'anki.imageUnsupported': string;
+  'anki.imageUnreadable': string;
+  'anki.imageTooLarge': string;
+  'anki.documentFull': string;
+  'anki.documentLarge': string;
+  'anki.imagesAdding': string;
+  'anki.imagesAdded': string;
 
   // Toolbar items
   'toolbar.hand': string;

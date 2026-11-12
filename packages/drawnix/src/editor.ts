@@ -29,6 +29,8 @@ export {
   getMindmapAnkiCards,
   type MindmapAnkiCard,
   type MindmapAnkiCardImage,
+  type MindmapAnkiCardMedia,
+  type MindmapAnkiCardSide,
   type MindmapAnkiCardNode,
 } from './anki-cards';
 

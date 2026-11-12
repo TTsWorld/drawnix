@@ -42,11 +42,32 @@ the panel position, so opening one closes the other. Keyboard, clipboard, and
 undo/redo in the panel follow the note panel: continuous typing in one field is
 one undo step.
 
+The panel shows one card at a time. A dropdown switches between cards (and
+adds a new one); tabs switch between the front and the back. Each side has text
+and images: use the add-image button, paste an image, or drop image files on
+the panel. Pastes and drops in the panel never reach the board.
+
 Cards are stored at `MindElement.ankiCards` (outside `data`, like notes):
 
 ```ts
-ankiCards?: Array<{ id: string; front: string; back: string; tags?: string[] }>;
+ankiCards?: Array<{
+  id: string;
+  front: string;
+  back: string;
+  tags?: string[];
+  frontImages?: MindmapAnkiCardMedia[]; // shown after the front text
+  backImages?: MindmapAnkiCardMedia[];
+}>;
+// MindmapAnkiCardMedia: { id, url (data URL), mimeType, width, height }
 ```
+
+Images are stored inline as data URLs, like other Drawnix images. PNG, JPEG,
+GIF and WebP are accepted. Images larger than 1280 px or 300 KiB are scaled
+and re-encoded (PNG, then JPEG) to fit; smaller ones are kept unchanged. An
+image is not added if the document would exceed 7.5 MiB (hosts such as Stair
+reject documents above 8 MiB); the panel shows an error, and a warning above
+6 MiB. An image ID never changes and images are never edited in place, so
+exporters can name media files by image ID.
 
 `id` is a random UUID that never changes, so hosts can use it as the Anki note
 GUID across repeated exports. Copied or duplicated cards always get new IDs
