@@ -138,7 +138,8 @@ function collectAnkiCardIds(elements: PlaitElement[], ids: Set<string>) {
   return ids;
 }
 
-// Set on clipboard elements built by a cut; removed again when pasting.
+// Set on clipboard elements built by a cut, with one token per cut; removed
+// again when pasting.
 const CUT_MARK = 'ankiCardsCut';
 
 function hasAnkiCards(element: PlaitElement): boolean {
@@ -152,9 +153,12 @@ function hasAnkiCards(element: PlaitElement): boolean {
  * Marks cut clipboard elements that contain cards, so that pasting them moves
  * the cards instead of copying them.
  */
-export function markAnkiCardsCut(elements: PlaitElement[]): PlaitElement[] {
+export function markAnkiCardsCut(
+  elements: PlaitElement[],
+  cutId: string = createAnkiCardId()
+): PlaitElement[] {
   return elements.map((element) =>
-    hasAnkiCards(element) ? { ...element, [CUT_MARK]: true } : element
+    hasAnkiCards(element) ? { ...element, [CUT_MARK]: cutId } : element
   );
 }
 
@@ -162,12 +166,15 @@ export function markAnkiCardsCut(elements: PlaitElement[]): PlaitElement[] {
  * Prepares clipboard elements for pasting. Copied or duplicated cards always
  * get new IDs, so a copy never shares an Anki GUID with its source, even in
  * another document. Cut cards keep their IDs (the source has been removed)
- * unless the ID is already on the board, as when pasting the same cut twice.
- * Card objects are otherwise kept as they are, including unknown fields.
+ * only on the first paste of that cut: `pastedCuts` holds cuts that were
+ * already pasted, in any document, and is updated with this paste. An ID that
+ * is already on the board is always renewed. Card objects are otherwise kept
+ * as they are, including unknown fields.
  */
 export function prepareAnkiCardsForPaste(
   elements: PlaitElement[],
-  existing: PlaitElement[]
+  existing: PlaitElement[],
+  pastedCuts: Set<string>
 ): PlaitElement[] {
   const used = collectAnkiCardIds(existing, new Set());
   const renew = (element: PlaitElement, isCut: boolean): PlaitElement => {
@@ -194,8 +201,14 @@ export function prepareAnkiCardsForPaste(
     }
     return result;
   };
-  return elements.map((element) => {
-    const { [CUT_MARK]: cut, ...rest } = element;
-    return renew(rest as PlaitElement, cut === true);
+  const cuts = new Set<string>();
+  const prepared = elements.map((element) => {
+    const { [CUT_MARK]: cutId, ...rest } = element;
+    const isCut = typeof cutId === 'string' && !pastedCuts.has(cutId);
+    if (typeof cutId === 'string') cuts.add(cutId);
+    return renew(rest as PlaitElement, isCut);
   });
+  // Elements of one cut share its ID; record it after the whole paste.
+  cuts.forEach((cutId) => pastedCuts.add(cutId));
+  return prepared;
 }

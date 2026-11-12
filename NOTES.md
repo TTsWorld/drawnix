@@ -51,8 +51,10 @@ ankiCards?: Array<{ id: string; front: string; back: string; tags?: string[] }>;
 `id` is a random UUID that never changes, so hosts can use it as the Anki note
 GUID across repeated exports. Copied or duplicated cards always get new IDs
 when pasted, also into another document, so two cards never share a GUID. Cut
-and paste moves cards and keeps their IDs (unless an ID is already on the
-board, as when pasting the same cut twice). Pasting keeps card fields this
+and paste moves cards and keeps their IDs on the first paste of that cut only;
+pasting the same cut again, in any document, renews them, as does pasting an
+ID that is already on the board. Used cuts are remembered in `localStorage`
+(`drawnix-anki-pasted-cuts`, last 100) and in memory. Pasting keeps card fields this
 version does not know. Deleting the last card removes the field. `front` and `back` are plain multiline text; exporters must escape
 HTML and convert line breaks. Card images, image occlusion, scheduling, and
 `.apkg` export are not part of this package.

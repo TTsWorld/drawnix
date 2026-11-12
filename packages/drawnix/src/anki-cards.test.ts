@@ -176,7 +176,11 @@ describe('Anki card IDs on paste', () => {
     const { board } = setup();
     setCards(board, [0, 0], [card('a1'), card('a2')]);
     const copy = copyNewNode(board.children[0] as MindElement);
-    const pasted = prepareAnkiCardsForPaste([copy, copy], board.children);
+    const pasted = prepareAnkiCardsForPaste(
+      [copy, copy],
+      board.children,
+      new Set()
+    );
     const ids = pasted.flatMap((root) => idsOf([root]));
     expect(ids).toHaveLength(4);
     expect(new Set([...ids, 'a1', 'a2']).size).toBe(6);
@@ -193,7 +197,11 @@ describe('Anki card IDs on paste', () => {
     setCards(source.board, [0, 0], [card('a1')]);
     const copy = copyNewNode(source.board.children[0] as MindElement);
     const target = setup();
-    const [pasted] = prepareAnkiCardsForPaste([copy], target.board.children);
+    const [pasted] = prepareAnkiCardsForPaste(
+      [copy],
+      target.board.children,
+      new Set()
+    );
     const [id] = idsOf([pasted]);
     expect(id).not.toBe('a1');
     expect(getMindmapAnkiCards([pasted])[0].cards[0]).toEqual({
@@ -202,29 +210,61 @@ describe('Anki card IDs on paste', () => {
     });
   });
 
-  it('keeps cut IDs, also in another document, unless they are already on the board', () => {
+  it('keeps cut IDs on the first paste only, in any document', () => {
     const { board } = setup();
     setCards(board, [0, 0], [card('a1')]);
-    const [cut] = markAnkiCardsCut([
-      copyNewNode(board.children[0] as MindElement),
-    ]);
-    expect(cut).toHaveProperty('ankiCardsCut', true);
+    const [cut] = markAnkiCardsCut(
+      [copyNewNode(board.children[0] as MindElement)],
+      'cut-1'
+    );
+    expect(cut).toHaveProperty('ankiCardsCut', 'cut-1');
     fakeNodeWeakMap(board);
     Transforms.removeNode(board, [0]);
+    const pastedCuts = new Set<string>();
 
-    const [first] = prepareAnkiCardsForPaste([cut], board.children);
+    // First paste, here into another document: the cards move.
+    const [first] = prepareAnkiCardsForPaste(
+      [cut],
+      setup().board.children,
+      pastedCuts
+    );
     expect(idsOf([first])).toEqual(['a1']);
     expect(first).not.toHaveProperty('ankiCardsCut');
-    expect(prepareAnkiCardsForPaste([cut], setup().board.children)).toEqual([
-      first,
-    ]);
+    expect(pastedCuts).toEqual(new Set(['cut-1']));
 
-    // Pasting the same cut again must not reuse the ID now on the board.
-    fakeNodeWeakMap(board);
-    Transforms.insertNode(board, first, [0]);
-    const [second] = prepareAnkiCardsForPaste([cut], board.children);
+    // Pasting the same cut into a third document that lacks the ID still
+    // renews it, so two documents never share a GUID.
+    const [second] = prepareAnkiCardsForPaste(
+      [cut],
+      setup().board.children,
+      pastedCuts
+    );
     expect(idsOf([second])).toHaveLength(1);
     expect(idsOf([second])[0]).not.toBe('a1');
+  });
+
+  it('renews cut IDs that are already on the board even on the first paste', () => {
+    const { board } = setup();
+    setCards(board, [0, 0], [card('a1')]);
+    const cut = markAnkiCardsCut(
+      [copyNewNode(board.children[0] as MindElement)],
+      'cut-2'
+    );
+    const [pasted] = prepareAnkiCardsForPaste(cut, board.children, new Set());
+    expect(idsOf([pasted])[0]).not.toBe('a1');
+  });
+
+  it('keeps the IDs of every node in one cut on its first paste', () => {
+    const element = (id: string, cardId: string) =>
+      ({ id, children: [], ankiCards: [card(cardId)] } as PlaitElement);
+    const cut = markAnkiCardsCut(
+      [element('n1', 'c1'), element('n2', 'c2')],
+      'cut-3'
+    );
+    const pastedCuts = new Set<string>();
+    const pasted = prepareAnkiCardsForPaste(cut, [], pastedCuts);
+    expect(pasted.map((e) => getAnkiCards(e)[0].id)).toEqual(['c1', 'c2']);
+    expect(pastedCuts).toEqual(new Set(['cut-3']));
   });
 
   it('only marks cut elements that contain cards', () => {
@@ -247,7 +287,7 @@ describe('Anki card IDs on paste', () => {
       ],
     } as PlaitElement;
     const clipboard = isCut ? markAnkiCardsCut([element]) : [element];
-    const [pasted] = prepareAnkiCardsForPaste(clipboard, []);
+    const [pasted] = prepareAnkiCardsForPaste(clipboard, [], new Set());
     const [first, second] = pasted.ankiCards;
     expect(first).toEqual({
       ...card('a1'),
@@ -283,7 +323,7 @@ describe('Anki card IDs on paste', () => {
       null,
       WritableClipboardOperationType.cut
     );
-    expect(cut?.elements[0]).toHaveProperty('ankiCardsCut', true);
+    expect(cut?.elements[0]).toHaveProperty('ankiCardsCut', expect.any(String));
     expect(context.elements[0]).not.toHaveProperty('ankiCardsCut');
 
     board.insertFragment(
@@ -300,5 +340,37 @@ describe('Anki card IDs on paste', () => {
     const [pastedCard] = getAnkiCards(data.elements[0]);
     expect(pastedCard).toMatchObject({ front: 'Q b1', back: 'A b1' });
     expect(pastedCard.id).not.toBe('b1');
+  });
+
+  it('keeps a cut on its first paste only, across boards', () => {
+    const source = setup();
+    setCards(source.board, [0, 1], [card('b1')]);
+    const child = (source.board.children[0] as MindElement).children[1];
+    source.board.buildFragment = () => ({
+      text: 'x',
+      type: WritableClipboardType.elements,
+      elements: [copyNewNode(child)],
+    });
+    withAnkiCards(source.board);
+    const cut = source.board.buildFragment(
+      null,
+      null,
+      WritableClipboardOperationType.cut
+    );
+
+    const pasteInto = () => {
+      const target = setup();
+      const insertFragment = vi.fn();
+      target.board.insertFragment = insertFragment;
+      withAnkiCards(target.board);
+      target.board.insertFragment(
+        { elements: cut?.elements },
+        [0, 0],
+        WritableClipboardOperationType.paste
+      );
+      return getAnkiCards(insertFragment.mock.calls[0][0].elements[0])[0].id;
+    };
+    expect(pasteInto()).toBe('b1');
+    expect(pasteInto()).not.toBe('b1');
   });
 });
