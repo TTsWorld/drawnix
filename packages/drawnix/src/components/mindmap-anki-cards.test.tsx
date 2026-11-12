@@ -559,4 +559,60 @@ describe('Anki card panel layout and images', () => {
       },
     ]);
   });
+
+  describe('while images are processing', () => {
+    let release: () => void = () => undefined;
+    beforeEach(() => {
+      let gate = Promise.resolve();
+      const hold = () => {
+        gate = new Promise((resolve) => (release = resolve));
+      };
+      hold();
+      setAnkiImageCodecForTesting({
+        ...fakeCodec,
+        decode: async (file) => {
+          await gate;
+          return fakeCodec.decode(file);
+        },
+      });
+    });
+
+    it('queues a second paste instead of dropping it', async () => {
+      const { editor } = await twoCards();
+      const paste = () => {
+        const event = new Event('paste', { bubbles: true, cancelable: true });
+        Object.assign(event, { clipboardData: transfer([png()]) });
+        fireEvent(field('卡片 1 正面'), event);
+      };
+      await settle(paste);
+      await settle(paste);
+      expect(screen.getByRole('status').textContent).toBe('正在处理图片…');
+      await settle(() => release());
+      expect(editor.readAnkiCards()[0].cards[0].frontImages).toHaveLength(2);
+      expect(screen.getByRole('status').textContent).toBe('已添加图片');
+    });
+
+    it('reports instead of claiming success when the card was deleted meanwhile', async () => {
+      const { editor } = await twoCards();
+      const input = screen.getByTestId('drawnix-anki-image-input');
+      await settle(() =>
+        fireEvent.change(input, { target: { files: [png()] } })
+      );
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole('button', { name: '删除卡片: 卡片 1' })
+        );
+      });
+      // The notice about card 1 is not shown on card 2.
+      expect(screen.queryByRole('status')).toBeNull();
+      await settle(() => release());
+      expect(editor.readAnkiCards()[0].cards).toEqual([
+        { id: 'c2', front: '', back: 'A2' },
+      ]);
+      expect(screen.queryByText('已添加图片')).toBeNull();
+      expect(screen.getByRole('alert').textContent).toBe(
+        '图片未添加：目标卡片已被删除'
+      );
+    });
+  });
 });

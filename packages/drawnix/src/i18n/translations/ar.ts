@@ -34,6 +34,7 @@ const arTranslations: Translations = {
   'anki.documentLarge': "المستند كبير (حوالي {size})، قريب من حد 8 ميبيبايت",
   'anki.imagesAdding': "جارٍ معالجة الصور…",
   'anki.imagesAdded': "تمت إضافة الصورة",
+  'anki.imageTargetGone': "لم تتم إضافة الصورة: تم حذف البطاقة",
 
     // Toolbar items
     "toolbar.hand": "اليد — H",

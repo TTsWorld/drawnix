@@ -159,7 +159,12 @@ const AnkiCardField = ({
   );
 };
 
-type Notice = { kind: 'error' | 'warning' | 'status'; text: string };
+type Notice = {
+  kind: 'error' | 'warning' | 'status';
+  text: string;
+  /** Card the notice is about; it is shown only with that card. */
+  cardId?: string;
+};
 
 function imageErrorText(
   error: unknown,
@@ -192,7 +197,10 @@ export const MindmapAnkiCards = () => {
   } | null>(null);
   const lastIndex = useRef<{ nodeId?: string; index: number }>({ index: 0 });
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Number of image batches being processed; batches run one after another.
+  const [pending, setPending] = useState(0);
+  const busy = pending > 0;
+  const imageQueue = useRef<Promise<void>>(Promise.resolve());
   const [dragging, setDragging] = useState(false);
   const [preview, setPreview] = useState<{
     url: string;
@@ -392,53 +400,77 @@ export const MindmapAnkiCards = () => {
     );
   };
 
-  const addImages = async (files: File[]) => {
-    if (!node || !current || busy || !files.length) return;
+  /**
+   * Adds images to the side that is open now. Batches added while another is
+   * still processing are queued, never dropped. The target card is checked
+   * again before writing: it can be deleted or undone away meanwhile.
+   */
+  const addImages = (files: File[]) => {
+    if (!node || !current || !files.length) return;
     const target = { nodeId: node.id, cardId: current.id, side };
-    setBusy(true);
-    setNotice({ kind: 'status', text: t('anki.imagesAdding') });
-    const added: MindmapAnkiCardMedia[] = [];
-    let failure: Notice | null = null;
-    for (const file of files) {
-      try {
-        added.push(await createAnkiCardImage(file, imageCodec));
-      } catch (error) {
-        failure ??= { kind: 'error', text: imageErrorText(error, t) };
-      }
-    }
-    let warning: Notice | null = null;
-    if (added.length) {
-      const size = getUtf8Size(serializeDrawnixBoard(board));
-      try {
-        const projected = checkDocumentBudget(
-          size,
-          added.map((image) => image.url)
-        );
-        setImages(target.nodeId, target.cardId, target.side, (images) => [
-          ...images,
-          ...added,
-        ]);
-        if (projected > DOCUMENT_SIZE_WARNING) {
-          warning = {
-            kind: 'warning',
-            text: t('anki.documentLarge').replace(
-              '{size}',
-              formatMiB(projected)
-            ),
-          };
+    const notify = (value: Notice | null) =>
+      setNotice(value && { ...value, cardId: target.cardId });
+    setPending((count) => count + 1);
+    notify({ kind: 'status', text: t('anki.imagesAdding') });
+    imageQueue.current = imageQueue.current.then(async () => {
+      const added: MindmapAnkiCardMedia[] = [];
+      let failure: Notice | null = null;
+      for (const file of files) {
+        try {
+          added.push(await createAnkiCardImage(file, imageCodec));
+        } catch (error) {
+          failure ??= { kind: 'error', text: imageErrorText(error, t) };
         }
-      } catch (error) {
-        const projected =
-          size + added.reduce((total, image) => total + image.url.length, 0);
-        failure = { kind: 'error', text: imageErrorText(error, t, projected) };
       }
-    }
-    setBusy(false);
-    setNotice(
-      failure ??
-        warning ??
-        (added.length ? { kind: 'status', text: t('anki.imagesAdded') } : null)
-    );
+      let warning: Notice | null = null;
+      const exists = getAnkiCards(findMindElement(board, target.nodeId)).some(
+        (card) => card.id === target.cardId
+      );
+      if (added.length && !exists) {
+        // Shown with whichever card is open, since the target is gone.
+        setPending((count) => count - 1);
+        setNotice({ kind: 'error', text: t('anki.imageTargetGone') });
+        return;
+      }
+      if (added.length) {
+        const size = getUtf8Size(serializeDrawnixBoard(board));
+        try {
+          const projected = checkDocumentBudget(
+            size,
+            added.map((image) => image.url)
+          );
+          setImages(target.nodeId, target.cardId, target.side, (images) => [
+            ...images,
+            ...added,
+          ]);
+          if (projected > DOCUMENT_SIZE_WARNING) {
+            warning = {
+              kind: 'warning',
+              text: t('anki.documentLarge').replace(
+                '{size}',
+                formatMiB(projected)
+              ),
+            };
+          }
+        } catch (error) {
+          const projected =
+            size + added.reduce((total, image) => total + image.url.length, 0);
+          failure = {
+            kind: 'error',
+            text: imageErrorText(error, t, projected),
+          };
+          added.length = 0;
+        }
+      }
+      setPending((count) => count - 1);
+      notify(
+        failure ??
+          warning ??
+          (added.length
+            ? { kind: 'status', text: t('anki.imagesAdded') }
+            : null)
+      );
+    });
   };
 
   const removeImage = (imageId: string) => {
@@ -469,7 +501,7 @@ export const MindmapAnkiCards = () => {
       setNotice({ kind: 'error', text: t('anki.imageUnsupported') });
       return;
     }
-    void addImages(files);
+    addImages(files);
   };
 
   const images = current ? current[ANKI_CARD_IMAGE_FIELDS[side]] ?? [] : [];
@@ -730,12 +762,12 @@ export const MindmapAnkiCards = () => {
                     onChange={(event) => {
                       const files = Array.from(event.target.files ?? []);
                       event.target.value = '';
-                      void addImages(files);
+                      addImages(files);
                     }}
                   />
                 </div>
                 <p className="drawnix-anki-hint">{t('anki.imageHint')}</p>
-                {notice && (
+                {notice && (!notice.cardId || notice.cardId === current.id) && (
                   <p
                     className={`drawnix-anki-notice drawnix-anki-notice--${notice.kind}`}
                     role={notice.kind === 'error' ? 'alert' : 'status'}

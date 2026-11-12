@@ -34,6 +34,7 @@ const ruTranslations: Translations = {
   'anki.documentLarge': "Документ большой (около {size}), близок к лимиту 8 МиБ",
   'anki.imagesAdding': "Обработка изображений…",
   'anki.imagesAdded': "Изображение добавлено",
+  'anki.imageTargetGone': "Изображение не добавлено: карточка удалена",
 
   // Toolbar items
   'toolbar.hand': 'Рука — H',

@@ -38,6 +38,7 @@ export interface Translations {
   'anki.documentLarge': string;
   'anki.imagesAdding': string;
   'anki.imagesAdded': string;
+  'anki.imageTargetGone': string;
 
   // Toolbar items
   'toolbar.hand': string;

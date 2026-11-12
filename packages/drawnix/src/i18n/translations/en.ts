@@ -34,6 +34,7 @@ const enTranslations: Translations = {
   'anki.documentLarge': "The document is large (about {size}), close to the 8 MiB limit",
   'anki.imagesAdding': "Processing images…",
   'anki.imagesAdded': "Image added",
+  'anki.imageTargetGone': "Image not added: the card was deleted",
 
   // Toolbar items
   'toolbar.hand': 'Hand — H',
