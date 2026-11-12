@@ -56,31 +56,36 @@ export function parseAnkiTags(text: string): string[] {
   return Array.from(new Set(text.split(/\s+/).filter(Boolean)));
 }
 
+type StoredAnkiCard = Record<string, unknown> & { id: string };
+
+function isStoredAnkiCard(card: unknown): card is StoredAnkiCard {
+  return (
+    !!card &&
+    typeof card === 'object' &&
+    typeof (card as { id?: unknown }).id === 'string' &&
+    !!(card as { id: string }).id
+  );
+}
+
 /** Reads a node's cards, ignoring malformed entries from external edits. */
-export function getAnkiCards(element: PlaitElement | undefined): MindmapAnkiCard[] {
+export function getAnkiCards(
+  element: PlaitElement | undefined
+): MindmapAnkiCard[] {
   const value = element?.['ankiCards'];
   if (!Array.isArray(value)) return [];
-  return value
-    .filter(
-      (card): card is Record<string, unknown> =>
-        !!card &&
-        typeof card === 'object' &&
-        typeof card.id === 'string' &&
-        !!card.id
-    )
-    .map((card) => {
-      const tags = Array.isArray(card.tags)
-        ? card.tags.filter(
-            (tag): tag is string => typeof tag === 'string' && !!tag
-          )
-        : [];
-      return {
-        id: card.id as string,
-        front: typeof card.front === 'string' ? card.front : '',
-        back: typeof card.back === 'string' ? card.back : '',
-        ...(tags.length ? { tags } : {}),
-      };
-    });
+  return value.filter(isStoredAnkiCard).map((card) => {
+    const tags = Array.isArray(card.tags)
+      ? card.tags.filter(
+          (tag): tag is string => typeof tag === 'string' && !!tag
+        )
+      : [];
+    return {
+      id: card.id as string,
+      front: typeof card.front === 'string' ? card.front : '',
+      back: typeof card.back === 'string' ? card.back : '',
+      ...(tags.length ? { tags } : {}),
+    };
+  });
 }
 
 function forEachMindElement(
@@ -133,31 +138,64 @@ function collectAnkiCardIds(elements: PlaitElement[], ids: Set<string>) {
   return ids;
 }
 
+// Set on clipboard elements built by a cut; removed again when pasting.
+const CUT_MARK = 'ankiCardsCut';
+
+function hasAnkiCards(element: PlaitElement): boolean {
+  return (
+    getAnkiCards(element).length > 0 ||
+    (Array.isArray(element.children) && element.children.some(hasAnkiCards))
+  );
+}
+
 /**
- * Gives pasted cards new IDs when their IDs are already on the board, so a
- * copy never shares an Anki GUID with its source. A cut-and-paste keeps IDs
- * because the source has already been removed.
+ * Marks cut clipboard elements that contain cards, so that pasting them moves
+ * the cards instead of copying them.
  */
-export function renewDuplicateAnkiCardIds(
+export function markAnkiCardsCut(elements: PlaitElement[]): PlaitElement[] {
+  return elements.map((element) =>
+    hasAnkiCards(element) ? { ...element, [CUT_MARK]: true } : element
+  );
+}
+
+/**
+ * Prepares clipboard elements for pasting. Copied or duplicated cards always
+ * get new IDs, so a copy never shares an Anki GUID with its source, even in
+ * another document. Cut cards keep their IDs (the source has been removed)
+ * unless the ID is already on the board, as when pasting the same cut twice.
+ * Card objects are otherwise kept as they are, including unknown fields.
+ */
+export function prepareAnkiCardsForPaste(
   elements: PlaitElement[],
   existing: PlaitElement[]
 ): PlaitElement[] {
   const used = collectAnkiCardIds(existing, new Set());
-  const renew = (element: PlaitElement): PlaitElement => {
+  const renew = (element: PlaitElement, isCut: boolean): PlaitElement => {
     let result = element;
-    if (Array.isArray(element['ankiCards'])) {
-      const cards = getAnkiCards(element).map((card) => {
-        const id = used.has(card.id) ? createAnkiCardId() : card.id;
-        used.add(id);
-        return { ...card, id };
-      });
-      const { ankiCards: _ankiCards, ...rest } = element;
-      result = (cards.length ? { ...rest, ankiCards: cards } : rest) as PlaitElement;
+    const cards: unknown = element['ankiCards'];
+    if (Array.isArray(cards)) {
+      result = {
+        ...result,
+        ankiCards: cards.map((card) => {
+          // Malformed entries are left alone; readers skip them.
+          if (!isStoredAnkiCard(card)) return card;
+          const keep = isCut && !used.has(card.id);
+          const id = keep ? card.id : createAnkiCardId();
+          used.add(id);
+          return keep ? card : { ...card, id };
+        }),
+      };
     }
     if (Array.isArray(element.children)) {
-      result = { ...result, children: element.children.map(renew) };
+      result = {
+        ...result,
+        children: element.children.map((child) => renew(child, isCut)),
+      };
     }
     return result;
   };
-  return elements.map(renew);
+  return elements.map((element) => {
+    const { [CUT_MARK]: cut, ...rest } = element;
+    return renew(rest as PlaitElement, cut === true);
+  });
 }
