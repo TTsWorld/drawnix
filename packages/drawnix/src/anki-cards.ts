@@ -166,12 +166,14 @@ function forEachMindElement(
   elements.filter(PlaitMind.isMind).forEach(walk);
 }
 
-/** Lists every node that has cards, depth-first in document order. */
+/** Lists every node that has cards, depth-first in document order. Card IDs
+ * in the result are unique: duplicates are resolved like
+ * normalizeAnkiCardIds, which the editor also writes back to the document. */
 export function getMindmapAnkiCards(
   elements: PlaitElement[]
 ): MindmapAnkiCardNode[] {
   const result: MindmapAnkiCardNode[] = [];
-  forEachMindElement(elements, (element) => {
+  forEachMindElement(normalizeAnkiCardIds(elements), (element) => {
     const cards = getAnkiCards(element);
     if (!cards.length) return;
     const image = element.data?.image;
@@ -193,7 +195,7 @@ export function getMindmapAnkiCards(
   return result;
 }
 
-function collectAnkiCardIds(elements: PlaitElement[], ids: Set<string>) {
+export function collectAnkiCardIds(elements: PlaitElement[], ids: Set<string>) {
   for (const element of elements) {
     for (const card of getAnkiCards(element)) ids.add(card.id);
     if (Array.isArray(element.children)) {
@@ -239,10 +241,12 @@ export function markAnkiCardsCut(
 export function prepareAnkiCardsForPaste(
   elements: PlaitElement[],
   existing: PlaitElement[],
-  pastedCuts: Set<string>
+  pastedCuts: Set<string>,
+  /** Filled with card ID → cut ID for every card that kept its ID. */
+  kept?: Map<string, string>
 ): PlaitElement[] {
   const used = collectAnkiCardIds(existing, new Set());
-  const renew = (element: PlaitElement, isCut: boolean): PlaitElement => {
+  const renew = (element: PlaitElement, cut: string | null): PlaitElement => {
     let result = element;
     const cards: unknown = element['ankiCards'];
     if (Array.isArray(cards)) {
@@ -251,8 +255,9 @@ export function prepareAnkiCardsForPaste(
         ankiCards: cards.map((card) => {
           // Malformed entries are left alone; readers skip them.
           if (!isStoredAnkiCard(card)) return card;
-          const keep = isCut && !used.has(card.id);
+          const keep = cut !== null && !used.has(card.id);
           const id = keep ? card.id : createAnkiCardId();
+          if (keep) kept?.set(id, cut);
           used.add(id);
           return keep ? card : { ...card, id };
         }),
@@ -261,7 +266,7 @@ export function prepareAnkiCardsForPaste(
     if (Array.isArray(element.children)) {
       result = {
         ...result,
-        children: element.children.map((child) => renew(child, isCut)),
+        children: element.children.map((child) => renew(child, cut)),
       };
     }
     return result;
@@ -271,9 +276,126 @@ export function prepareAnkiCardsForPaste(
     const { [CUT_MARK]: cutId, ...rest } = element;
     const isCut = typeof cutId === 'string' && !pastedCuts.has(cutId);
     if (typeof cutId === 'string') cuts.add(cutId);
-    return renew(rest as PlaitElement, isCut);
+    return renew(rest as PlaitElement, isCut ? (cutId as string) : null);
   });
   // Elements of one cut share its ID; record it after the whole paste.
   cuts.forEach((cutId) => pastedCuts.add(cutId));
   return prepared;
+}
+
+// 128-bit non-cryptographic hash (cyrb128); enough to make derived IDs
+// distinct, and stable across runs.
+function hash128(text: string): number[] {
+  let h1 = 1779033703,
+    h2 = 3144134277,
+    h3 = 1013904242,
+    h4 = 2773480762;
+  for (let i = 0; i < text.length; i++) {
+    const k = text.charCodeAt(i);
+    h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+    h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+    h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+    h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
+  }
+  h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+  h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+  h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+  h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+  h1 ^= h2 ^ h3 ^ h4;
+  h2 ^= h1;
+  h3 ^= h1;
+  h4 ^= h1;
+  return [h1, h2, h3, h4].map((value) => value >>> 0);
+}
+
+/**
+ * The replacement ID for a duplicate card: derived from the node, the
+ * duplicated ID and an attempt counter, so repairing the same data always
+ * gives the same IDs (also after undo/redo). UUID-shaped, version 8.
+ */
+export function deriveAnkiCardId(
+  nodeId: string,
+  cardId: string,
+  attempt: number
+): string {
+  const hex = hash128(`anki-card\u0000${nodeId}\u0000${cardId}\u0000${attempt}`)
+    .map((value) => value.toString(16).padStart(8, '0'))
+    .join('');
+  const variant = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(
+    13,
+    16
+  )}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+export interface AnkiCardIdFix {
+  /** Plait path of the element whose cards change. */
+  path: number[];
+  /** The element's stored cards with duplicate IDs replaced. */
+  ankiCards: unknown[];
+}
+
+/**
+ * Finds card IDs that occur more than once in a document (for example in
+ * data from older versions or upstream Drawnix, which copy IDs unchanged).
+ * The first occurrence in document tree order keeps its ID; later ones get
+ * deriveAnkiCardId. Other card fields are kept.
+ */
+export function findDuplicateAnkiCardIds(
+  elements: PlaitElement[]
+): AnkiCardIdFix[] {
+  const seen = new Set<string>();
+  const fixes: AnkiCardIdFix[] = [];
+  const walk = (list: PlaitElement[], parent: number[]) => {
+    list.forEach((element, index) => {
+      const path = [...parent, index];
+      const cards: unknown = element?.['ankiCards'];
+      if (Array.isArray(cards)) {
+        let changed = false;
+        const next = cards.map((card) => {
+          if (!isStoredAnkiCard(card)) return card;
+          if (!seen.has(card.id)) {
+            seen.add(card.id);
+            return card;
+          }
+          let attempt = 0;
+          let id: string;
+          do id = deriveAnkiCardId(String(element.id), card.id, attempt++);
+          while (seen.has(id));
+          seen.add(id);
+          changed = true;
+          return { ...card, id };
+        });
+        if (changed) fixes.push({ path, ankiCards: next });
+      }
+      if (Array.isArray(element?.children)) walk(element.children, path);
+    });
+  };
+  walk(elements, []);
+  return fixes;
+}
+
+/** Returns the elements with duplicate card IDs resolved (unchanged when
+ * there are none). */
+export function normalizeAnkiCardIds(elements: PlaitElement[]): PlaitElement[] {
+  const fixes = findDuplicateAnkiCardIds(elements);
+  if (!fixes.length) return elements;
+  const apply = (
+    list: PlaitElement[],
+    path: number[],
+    ankiCards: unknown[]
+  ): PlaitElement[] =>
+    list.map((element, index) => {
+      if (index !== path[0]) return element;
+      return path.length === 1
+        ? { ...element, ankiCards }
+        : {
+            ...element,
+            children: apply(element.children ?? [], path.slice(1), ankiCards),
+          };
+    });
+  return fixes.reduce(
+    (result, fix) => apply(result, fix.path, fix.ankiCards),
+    elements
+  );
 }

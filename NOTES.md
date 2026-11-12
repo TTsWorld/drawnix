@@ -74,8 +74,19 @@ GUID across repeated exports. Copied or duplicated cards always get new IDs
 when pasted, also into another document, so two cards never share a GUID. Cut
 and paste moves cards and keeps their IDs on the first paste of that cut only;
 pasting the same cut again, in any document, renews them, as does pasting an
-ID that is already on the board. Used cuts are remembered in `localStorage`
-(`drawnix-anki-pasted-cuts`, last 100) and in memory. Pasting keeps card fields this
+ID that is already on the board. Undoing that first paste frees the cut again
+(pasting again is still the same move), and redo uses it again. Used cuts are
+remembered in `localStorage` (`drawnix-anki-pasted-cuts`, last 100) and in
+memory.
+
+The editor keeps card IDs unique within a document. Duplicates (for example
+from older versions or upstream Drawnix, which copy cards unchanged) are
+repaired after loading, after the host replaces the document, and after every
+change: the first card in document tree order keeps its ID, later ones get an
+ID derived from the node ID and the duplicated ID, so the same data is always
+repaired the same way. The repair is written to the document without an undo
+step. `readAnkiCards()` and `getMindmapAnkiCards()` apply the same rule, so
+their IDs are unique even for documents that were never opened. Pasting keeps card fields this
 version does not know. Deleting the last card removes the field. `front` and `back` are plain multiline text; exporters must escape
 HTML and convert line breaks. Card images, image occlusion, scheduling, and
 `.apkg` export are not part of this package.

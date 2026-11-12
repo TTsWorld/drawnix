@@ -16,11 +16,17 @@ import {
   getAnkiCards,
   getMindmapAnkiCards,
   parseAnkiTags,
+  collectAnkiCardIds,
+  deriveAnkiCardId,
+  findDuplicateAnkiCardIds,
   markAnkiCardsCut,
+  normalizeAnkiCardIds,
   prepareAnkiCardsForPaste,
 } from './anki-cards';
 import { createDrawnixEditor, parseDrawnixDocument } from './editor';
 import { withAnkiCards } from './plugins/with-anki-cards';
+
+const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve));
 
 const card = (id: string, front = `Q ${id}`, back = `A ${id}`) => ({
   id,
@@ -419,5 +425,194 @@ describe('Anki card images', () => {
     const [copied] = getMindmapAnkiCards([pasted])[0].cards;
     expect(copied.id).not.toBe('a1');
     expect(copied.backImages).toEqual([image('b1')]);
+  });
+});
+
+describe('duplicate card IDs in a document', () => {
+  let template: PlaitElement[] | undefined;
+  const dupDocument = (): PlaitElement[] => {
+    if (!template) {
+      const { board } = setup();
+      // Both children and the root share IDs, as after copying in old versions.
+      setCards(board, [0], [card('x'), card('x', 'Q same node')]);
+      setCards(
+        board,
+        [0, 0],
+        [card('x', 'Q child A'), { ...card('y'), extra: 1 }]
+      );
+      setCards(board, [0, 1], [card('y', 'Q child B'), null]);
+      template = board.children;
+    }
+    return JSON.parse(JSON.stringify(template));
+  };
+
+  it('keeps the first ID in tree order and derives the others deterministically', () => {
+    const elements = dupDocument();
+    const fixes = findDuplicateAnkiCardIds(elements);
+    expect(fixes.map((fix) => fix.path)).toEqual([[0], [0, 0], [0, 1]]);
+    const [root] = normalizeAnkiCardIds(elements);
+    const [a, b] = root.children as PlaitElement[];
+    expect(root.ankiCards[0].id).toBe('x');
+    expect(root.ankiCards[1].id).toBe(deriveAnkiCardId(root.id, 'x', 0));
+    expect(a.ankiCards[0].id).toBe(deriveAnkiCardId(a.id, 'x', 0));
+    expect(a.ankiCards[1]).toEqual({ ...card('y'), extra: 1 });
+    expect(b.ankiCards[0]).toEqual({
+      ...card('y', 'Q child B'),
+      id: deriveAnkiCardId(b.id, 'y', 0),
+    });
+    expect(b.ankiCards[1]).toBeNull();
+    // Same input, same result; already unique input is returned as is.
+    expect(normalizeAnkiCardIds(dupDocument())).toEqual([root]);
+    expect(normalizeAnkiCardIds([root])).toEqual([root]);
+    expect(deriveAnkiCardId('n', 'x', 0)).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    );
+  });
+
+  it('returns unique IDs from the read API without changing the input', () => {
+    const elements = dupDocument();
+    const before = JSON.stringify(elements);
+    const ids = getMindmapAnkiCards(elements).flatMap((node) =>
+      node.cards.map((item) => item.id)
+    );
+    expect(ids).toHaveLength(5);
+    expect(new Set(ids).size).toBe(5);
+    expect(JSON.stringify(elements)).toBe(before);
+  });
+
+  it('repairs a loaded document once, without an undo step', async () => {
+    const board = createTestingBoard([withHistory], dupDocument());
+    withAnkiCards(board);
+    await flush();
+    const ids = [...collectAnkiCardIds(board.children, new Set())];
+    expect(ids).toHaveLength(5);
+    expect(board.history.undos).toHaveLength(0);
+    expect(board.children).toEqual(normalizeAnkiCardIds(dupDocument()));
+
+    // Replacing the document (host value change, import) is repaired too.
+    board.children = dupDocument();
+    board.afterChange();
+    await flush();
+    expect(board.children).toEqual(normalizeAnkiCardIds(dupDocument()));
+
+    // Undo cannot bring a duplicate back for good: it is repaired again to
+    // the same derived ID.
+    fakeNodeWeakMap(board);
+    PlaitHistoryBoard.withNewBatch(board, () => {
+      Transforms.setNode(board, { ankiCards: [card('x'), card('x')] }, [0]);
+    });
+    board.afterChange();
+    await flush();
+    const derived = deriveAnkiCardId(board.children[0].id, 'x', 0);
+    expect(
+      board.children[0].ankiCards.map((c: { id: string }) => c.id)
+    ).toEqual(['x', derived]);
+    board.undo();
+    board.afterChange();
+    await flush();
+    expect(board.children).toEqual(normalizeAnkiCardIds(dupDocument()));
+    board.redo();
+    board.afterChange();
+    await flush();
+    expect(
+      board.children[0].ankiCards.map((c: { id: string }) => c.id)
+    ).toEqual(['x', derived]);
+  });
+});
+
+describe('cut, paste, undo and paste again', () => {
+  function cutSource() {
+    const source = setup();
+    setCards(source.board, [0, 1], [card('m1')]);
+    const child = (source.board.children[0] as MindElement).children[1];
+    source.board.buildFragment = () => ({
+      text: 'x',
+      type: WritableClipboardType.elements,
+      elements: [copyNewNode(child)],
+    });
+    withAnkiCards(source.board);
+    const cut = source.board.buildFragment(
+      null,
+      null,
+      WritableClipboardOperationType.cut
+    );
+    fakeNodeWeakMap(source.board);
+    PlaitHistoryBoard.withNewBatch(source.board, () =>
+      Transforms.removeNode(source.board, [0, 1])
+    );
+    return cut?.elements as PlaitElement[];
+  }
+
+  function target() {
+    const { board } = setup();
+    board.insertFragment = (data) => {
+      fakeNodeWeakMap(board);
+      PlaitHistoryBoard.withNewBatch(board, () => {
+        for (const element of data?.elements ?? []) {
+          Transforms.insertNode(board, element, [board.children.length]);
+        }
+      });
+    };
+    withAnkiCards(board);
+    const paste = (elements: PlaitElement[]) =>
+      board.insertFragment(
+        { elements },
+        [0, 0],
+        WritableClipboardOperationType.paste
+      );
+    const ids = () => [...collectAnkiCardIds(board.children, new Set())];
+    return { board, paste, ids };
+  }
+
+  it('keeps the IDs again after the first paste is undone, and redo uses the cut', () => {
+    const cut = cutSource();
+    const b = target();
+    b.paste(cut);
+    expect(b.ids()).toEqual(['m1']);
+    b.board.undo();
+    expect(b.ids()).toEqual([]);
+    b.paste(cut);
+    expect(b.ids()).toEqual(['m1']);
+
+    b.board.undo();
+    b.board.redo();
+    expect(b.ids()).toEqual(['m1']);
+    // A real second paste, here or in another document, renews the IDs.
+    b.paste(cut);
+    expect(b.ids()).toHaveLength(2);
+    expect(b.ids()[1]).not.toBe('m1');
+    const c = target();
+    c.paste(cut);
+    expect(c.ids()).toHaveLength(1);
+    expect(c.ids()[0]).not.toBe('m1');
+  });
+
+  it('lets another document take the move after it was undone here', () => {
+    const cut = cutSource();
+    const b = target();
+    b.paste(cut);
+    b.board.undo();
+    const c = target();
+    c.paste(cut);
+    expect(c.ids()).toEqual(['m1']);
+    // Redo here now comes after C took the IDs; C's paste is the move, so
+    // b's next paste renews.
+    b.paste(cut);
+    expect(b.ids()[0]).not.toBe('m1');
+  });
+
+  it('keeps the move when the pasted node is deleted and the delete undone', () => {
+    const cut = cutSource();
+    const b = target();
+    b.paste(cut);
+    fakeNodeWeakMap(b.board);
+    PlaitHistoryBoard.withNewBatch(b.board, () =>
+      Transforms.removeNode(b.board, [b.board.children.length - 1])
+    );
+    b.board.undo();
+    expect(b.ids()).toEqual(['m1']);
+    const c = target();
+    c.paste(cut);
+    expect(c.ids()[0]).not.toBe('m1');
   });
 });
