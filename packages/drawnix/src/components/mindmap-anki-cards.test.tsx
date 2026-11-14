@@ -16,6 +16,7 @@ import {
 import type { AnkiImageCodec } from '../anki-card-images';
 import { MindmapNotes } from './mindmap-notes';
 import { renderMindmapWidgets } from '../testing/mindmap-widget-harness';
+import { MIND_WIDGET_OPENER_CLASS_NAME } from './mindmap-widgets';
 
 // jsdom has no screen coordinates; keep Plait's geometry/reference lookup real.
 vi.mock('@plait/core', async (importOriginal) => ({
@@ -427,6 +428,22 @@ describe('mind-map Anki cards', () => {
       await pressOn(document.body);
       expect(panel()).toBeNull();
     });
+
+    it("closes for another embedded editor's opener", async () => {
+      await setup({ cards: [{ id: 'c1', front: 'Q', back: 'A' }] });
+      const other = document.createElement('div');
+      other.className = 'drawnix';
+      const opener = document.createElement('button');
+      opener.className = MIND_WIDGET_OPENER_CLASS_NAME;
+      other.append(opener);
+      document.body.append(other);
+      try {
+        await pressOn(opener);
+      } finally {
+        other.remove();
+      }
+      expect(panel()).toBeNull();
+    });
   });
 
   it('closes with Escape and when the node is deleted', async () => {
@@ -616,11 +633,32 @@ describe('Anki card panel layout and images', () => {
     });
     expect(screen.queryByRole('menu')).toBeNull();
     expect(screen.getByRole('complementary')).toBeTruthy();
+  });
+
+  it('moves Tab focus from the menu to the next control, and Shift+Tab to the picker', async () => {
+    await twoCards();
+    await openMenu();
+    const tab = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      screen.getByRole('menu').dispatchEvent(tab);
+    });
+    // Default Tab would start from the removed menu item.
+    expect(tab.defaultPrevented).toBe(true);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(addButton());
     await openMenu();
     await act(async () => {
-      fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' });
+      fireEvent.keyDown(screen.getByRole('menu'), {
+        key: 'Tab',
+        shiftKey: true,
+      });
     });
     expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(trigger());
   });
 
   it('switches sides with tabs and arrow keys', async () => {

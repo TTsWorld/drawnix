@@ -4,6 +4,22 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type React from 'react';
 import { ChevronDownIcon, TrashIcon } from './icons';
 
+const TABBABLE =
+  'button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+
+/** The first tabbable element after `element` and outside it. */
+function nextTabbable(element: HTMLElement): HTMLElement | undefined {
+  return Array.from(
+    element.ownerDocument.querySelectorAll<HTMLElement>(TABBABLE)
+  ).find(
+    (candidate) =>
+      !element.contains(candidate) &&
+      !candidate.hidden &&
+      element.compareDocumentPosition(candidate) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+  );
+}
+
 export interface AnkiCardPickerItem {
   id: string;
   label: string;
@@ -96,8 +112,17 @@ export const AnkiCardPicker = ({
         event.preventDefault();
         event.stopPropagation();
         return closeMenu(true);
-      case 'Tab':
-        return closeMenu(false);
+      case 'Tab': {
+        // The focused item unmounts with the menu, so the browser would
+        // continue from the start of the page; move focus here instead.
+        event.preventDefault();
+        const next = event.shiftKey
+          ? trigger.current
+          : root.current && nextTabbable(root.current);
+        setOpen(false);
+        (next ?? trigger.current)?.focus();
+        return;
+      }
     }
   };
 

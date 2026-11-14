@@ -106,7 +106,8 @@ export function closeMindWidgetPanel(
 
 /**
  * Class of controls that open a widget panel (toolbar buttons, badges).
- * Pressing one does not count as an outside press: it switches the panel.
+ * Pressing one of the same editor does not count as an outside press: it
+ * switches the panel.
  */
 export const MIND_WIDGET_OPENER_CLASS_NAME = 'drawnix-mind-widget-opener';
 
@@ -132,10 +133,13 @@ export function useCloseOnOutsidePointerDown(
       if (!element) return;
       const path = event.composedPath();
       if (path.includes(element)) return;
+      // Another embedded editor's opener only changes that editor's state.
+      const editor = element.closest('.drawnix');
       const opener = path.some(
         (target) =>
           target instanceof Element &&
-          target.classList.contains(MIND_WIDGET_OPENER_CLASS_NAME)
+          target.classList.contains(MIND_WIDGET_OPENER_CLASS_NAME) &&
+          target.closest('.drawnix') === editor
       );
       if (opener) return;
       const active = element.ownerDocument.activeElement;
