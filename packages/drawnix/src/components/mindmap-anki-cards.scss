@@ -27,10 +27,26 @@
       box-shadow: var(--shadow-island), 0 0 0 3px var(--color-primary-light);
     }
 
-    .drawnix-anki-count {
-      margin-left: 6px;
-      font-weight: 400;
-      color: var(--color-gray-60);
+    header {
+      position: relative;
+      gap: 4px;
+    }
+    header > span {
+      flex: 1;
+    }
+    header .drawnix-anki-add,
+    header .drawnix-anki-close {
+      flex: none;
+      width: 28px;
+      height: 28px;
+    }
+    header .drawnix-anki-add {
+      padding: 5px;
+      color: var(--color-primary-darkest);
+      svg {
+        width: 18px;
+        height: 18px;
+      }
     }
 
     .drawnix-anki-empty {
@@ -42,11 +58,128 @@
       }
     }
 
-    .drawnix-anki-add {
-      padding: 4px 8px;
+    .drawnix-anki-picker {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .drawnix-anki-picker-trigger {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: auto;
+      max-width: calc(100% + 8px);
+      height: 28px;
+      margin-left: -8px;
+      line-height: 20px;
+      padding: 0 6px 0 8px;
       font: inherit;
       font-size: 14px;
-      color: var(--color-primary-darkest);
+      font-weight: 600;
+      color: var(--color-gray-85);
+      svg {
+        flex: none;
+        width: 16px;
+        height: 16px;
+        color: var(--color-gray-60);
+      }
+      &[aria-expanded='true'] {
+        background: var(--color-primary-light);
+        svg {
+          transform: rotate(180deg);
+        }
+      }
+    }
+
+    .drawnix-anki-picker-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .drawnix-anki-picker-count {
+      flex: none;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--color-gray-60);
+    }
+
+    .drawnix-anki-menu {
+      position: absolute;
+      z-index: 2;
+      top: 34px;
+      left: -8px;
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 4px;
+      background: var(--color-surface-lowest);
+      border: 1px solid var(--color-gray-20);
+      border-radius: 8px;
+      box-shadow: var(--shadow-island);
+
+      button {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        height: auto;
+        min-height: 32px;
+        line-height: 24px;
+        padding: 4px 8px 4px 28px;
+        overflow: hidden;
+        text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font: inherit;
+        font-size: 13px;
+        color: var(--color-gray-85);
+        &:focus-visible,
+        &:focus {
+          outline: none;
+          background: var(--color-primary-light);
+        }
+      }
+      [role='menuitemradio'] {
+        display: block;
+        position: relative;
+      }
+      [aria-checked='true'] {
+        font-weight: 600;
+        color: var(--color-primary-darkest);
+        &::before {
+          content: '✓';
+          position: absolute;
+          left: 10px;
+        }
+      }
+    }
+
+    .drawnix-anki-menu-cards {
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    .drawnix-anki-menu-separator {
+      height: 1px;
+      margin: 4px 0;
+      background: var(--color-gray-20);
+    }
+
+    .drawnix-anki-menu .drawnix-anki-menu-delete {
+      padding-left: 8px;
+      color: var(--color-danger, #d93025);
+      svg {
+        flex: none;
+        width: 14px;
+        height: 14px;
+      }
+      &:hover,
+      &:focus {
+        color: var(--color-danger, #d93025);
+        background: #d930251a;
+      }
     }
 
     .drawnix-anki-card {
@@ -54,50 +187,6 @@
       flex: 1;
       flex-direction: column;
       min-height: 0;
-    }
-
-    .drawnix-anki-card-bar {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 12px;
-
-      select {
-        flex: 1;
-        min-width: 0;
-        height: 32px;
-        padding: 0 28px 0 8px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font: inherit;
-        font-size: 13px;
-        color: var(--color-gray-85);
-        background: var(--color-surface-lowest);
-        border: 1px solid var(--color-gray-20);
-        border-radius: 8px;
-        outline: none;
-        cursor: pointer;
-        &:hover {
-          border-color: var(--color-gray-40);
-        }
-        &:focus-visible {
-          border-color: var(--color-primary);
-        }
-      }
-    }
-
-    .drawnix-anki-delete {
-      display: grid;
-      flex: none;
-      place-items: center;
-      width: 32px;
-      height: 32px;
-      padding: 7px;
-      svg {
-        width: 18px;
-        height: 18px;
-      }
     }
 
     .drawnix-anki-tabs {
@@ -279,7 +368,7 @@
       }
     }
 
-    &:has(textarea:focus-visible, input:focus-visible, select:focus-visible) {
+    &:has(textarea:focus-visible, input:focus-visible) {
       border-color: var(--color-gray-40);
     }
   }

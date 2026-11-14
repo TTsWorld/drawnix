@@ -69,13 +69,37 @@ async function type(input: HTMLElement, value: string) {
   });
 }
 
+const trigger = () => screen.getByRole('button', { name: /^选择卡片: / });
+const addButton = () => screen.getByRole('button', { name: '新增卡片' });
+async function openMenu() {
+  await act(async () => {
+    fireEvent.click(trigger());
+  });
+  return screen.getByRole('menu', { name: '选择卡片' });
+}
+async function chooseCard(name: string | RegExp) {
+  await openMenu();
+  await act(async () => {
+    fireEvent.click(screen.getByRole('menuitemradio', { name }));
+  });
+}
+async function deleteCurrent() {
+  await openMenu();
+  await act(async () => {
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除当前卡片' }));
+  });
+}
+async function addCard() {
+  await act(async () => {
+    fireEvent.click(addButton());
+  });
+}
+
 describe('mind-map Anki cards', () => {
   it('creates a card prefilled from the title and note, then keeps it independent', async () => {
     const { editor, id, board } = await setup({ note: 'Note text' });
     expect(screen.getByText('这个节点还没有卡片')).toBeTruthy();
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '+ 新增卡片' }));
-    });
+    await addCard();
     const [entry] = editor.readAnkiCards();
     expect(entry).toMatchObject({
       nodeId: id,
@@ -160,24 +184,22 @@ describe('mind-map Anki cards', () => {
         { id: 'c2', front: 'Q2', back: 'A2' },
       ],
     });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '删除卡片: 卡片 1' }));
-    });
+    await deleteCurrent();
     expect(editor.readAnkiCards()[0].cards.map((card) => card.id)).toEqual([
       'c2',
     ]);
     expect(document.activeElement).toBe(field('卡片 1 正面'));
     expect(field('卡片 1 正面').value).toBe('Q2');
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '删除卡片: 卡片 1' }));
-    });
+    expect(screen.getByRole('status').textContent).toBe(
+      '已删除卡片 1，按 Ctrl/⌘+Z 可撤销'
+    );
+    await deleteCurrent();
     expect(editor.readAnkiCards()).toEqual([]);
     expect(JSON.parse(editor.serialize()).elements[0]).not.toHaveProperty(
       'ankiCards'
     );
-    expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: '+ 新增卡片' })
-    );
+    expect(document.activeElement).toBe(addButton());
+    expect(screen.getByRole('status').textContent).toMatch(/^已删除卡片 1/);
     await act(async () => {
       board.undo();
       board.undo();
@@ -365,29 +387,115 @@ describe('Anki card panel layout and images', () => {
         { id: 'c2', front: '', back: 'A2' },
       ],
     });
-  const picker = () =>
-    screen.getByRole('combobox', { name: '选择卡片' }) as HTMLSelectElement;
+  const currentLabel = () =>
+    trigger().getAttribute('aria-label')?.replace('选择卡片: ', '');
 
   it('shows one card at a time and switches with the dropdown', async () => {
     const { editor } = await twoCards();
     expect(screen.getAllByRole('textbox', { name: /正面/ })).toHaveLength(1);
+    // The dropdown is the panel title; there is no separate title text.
+    expect(screen.queryByText('Anki 卡片')).toBeNull();
+    expect(trigger().textContent).toBe('卡片 1 · First question1/2');
+    expect(trigger().getAttribute('aria-haspopup')).toBe('menu');
+    expect(trigger().getAttribute('aria-expanded')).toBe('false');
+    await openMenu();
+    expect(trigger().getAttribute('aria-expanded')).toBe('true');
     expect(
-      Array.from(picker().options).map((option) => option.textContent)
+      screen
+        .getAllByRole('menuitemradio')
+        .map((item) => [item.textContent, item.getAttribute('aria-checked')])
     ).toEqual([
-      '卡片 1 · First question',
-      '卡片 2 · （正面为空）',
-      '+ 新增卡片',
+      ['卡片 1 · First question', 'true'],
+      ['卡片 2 · （正面为空）', 'false'],
+    ]);
+    // Adding is a separate button, not a menu entry.
+    expect(screen.queryByRole('menuitem', { name: /新增/ })).toBeNull();
+    expect(
+      screen.getAllByRole('menuitem').map((item) => item.textContent)
+    ).toEqual(['删除当前卡片']);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitemradio', { name: /^卡片 2/ }));
+    });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(field('卡片 2 正面').value).toBe('');
+    expect(currentLabel()).toBe('卡片 2 · （正面为空）');
+    await addCard();
+    expect(editor.readAnkiCards()[0].cards).toHaveLength(3);
+    expect(currentLabel()).toBe('卡片 3 · Original');
+    expect(document.activeElement).toBe(field('卡片 3 正面'));
+  });
+
+  it('works the dropdown with the keyboard; Escape closes only the menu', async () => {
+    const { editor, board } = await twoCards();
+    const key = (target: Element, name: string) =>
+      act(async () => {
+        fireEvent.keyDown(target, { key: name });
+      });
+    await key(trigger(), 'ArrowDown');
+    const menu = screen.getByRole('menu');
+    expect(document.activeElement?.textContent).toBe('卡片 1 · First question');
+    await key(menu, 'ArrowDown');
+    expect(document.activeElement?.textContent).toBe('卡片 2 · （正面为空）');
+    await key(menu, 'ArrowDown');
+    expect(document.activeElement?.textContent).toBe('删除当前卡片');
+    await key(menu, 'ArrowDown');
+    expect(document.activeElement?.textContent).toBe('卡片 1 · First question');
+    await key(menu, 'End');
+    await key(menu, 'ArrowUp');
+    expect(document.activeElement?.textContent).toBe('卡片 2 · （正面为空）');
+
+    await key(menu, 'Escape');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(
+      screen.getByRole('complementary', { name: 'Anki 卡片' })
+    ).toBeTruthy();
+    expect(document.activeElement).toBe(trigger());
+    expect(currentLabel()).toBe('卡片 1 · First question');
+
+    // Enter on a focused item activates it, like a click.
+    await key(trigger(), 'ArrowDown');
+    await key(screen.getByRole('menu'), 'ArrowDown');
+    await act(async () => {
+      fireEvent.click(document.activeElement as HTMLElement);
+    });
+    expect(currentLabel()).toBe('卡片 2 · （正面为空）');
+    expect(document.activeElement).toBe(trigger());
+
+    // ArrowUp opens on the delete entry; the delete is one undo step.
+    await key(trigger(), 'ArrowUp');
+    expect(document.activeElement?.textContent).toBe('删除当前卡片');
+    await act(async () => {
+      fireEvent.click(document.activeElement as HTMLElement);
+    });
+    expect(editor.readAnkiCards()[0].cards.map((card) => card.id)).toEqual([
+      'c1',
     ]);
     await act(async () => {
-      fireEvent.change(picker(), { target: { value: 'c2' } });
+      board.undo();
     });
-    expect(field('卡片 2 正面').value).toBe('');
+    expect(editor.readAnkiCards()[0].cards.map((card) => card.id)).toEqual([
+      'c1',
+      'c2',
+    ]);
+
+    // Escape without an open menu still closes the panel.
+    await key(trigger(), 'Escape');
+    expect(screen.queryByRole('complementary')).toBeNull();
+  });
+
+  it('closes the menu, not the panel, on a press elsewhere in the panel', async () => {
+    await twoCards();
+    await openMenu();
     await act(async () => {
-      fireEvent.change(picker(), { target: { value: '__new__' } });
+      fireEvent.pointerDown(screen.getByRole('tab', { name: '背面' }));
     });
-    expect(editor.readAnkiCards()[0].cards).toHaveLength(3);
-    expect(picker().value).toBe(editor.readAnkiCards()[0].cards[2].id);
-    expect(document.activeElement).toBe(field('卡片 3 正面'));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByRole('complementary')).toBeTruthy();
+    await openMenu();
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' });
+    });
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   it('switches sides with tabs and arrow keys', async () => {
@@ -403,22 +511,18 @@ describe('Anki card panel layout and images', () => {
     expect(field('卡片 1 背面').value).toBe('A1');
     expect(screen.queryByRole('textbox', { name: '卡片 1 正面' })).toBeNull();
     // The side is kept when switching cards.
-    await act(async () => {
-      fireEvent.change(picker(), { target: { value: 'c2' } });
-    });
+    await chooseCard(/^卡片 2/);
     expect(field('卡片 2 背面').value).toBe('A2');
   });
 
   it('keeps showing a neighbour after the selected card is undone away', async () => {
     const { board } = await twoCards();
-    await act(async () => {
-      fireEvent.change(picker(), { target: { value: '__new__' } });
-    });
-    expect(picker().selectedIndex).toBe(2);
+    await addCard();
+    expect(currentLabel()).toMatch(/^卡片 3 /);
     await act(async () => {
       board.undo();
     });
-    expect(picker().value).toBe('c2');
+    expect(currentLabel()).toBe('卡片 2 · （正面为空）');
   });
 
   it('adds images from the upload button to the current side, compressed', async () => {
@@ -599,12 +703,13 @@ describe('Anki card panel layout and images', () => {
         fireEvent.change(input, { target: { files: [png()] } })
       );
       await act(async () => {
-        fireEvent.click(
-          screen.getByRole('button', { name: '删除卡片: 卡片 1' })
-        );
+        fireEvent.click(trigger());
       });
-      // The notice about card 1 is not shown on card 2.
-      expect(screen.queryByRole('status')).toBeNull();
+      await act(async () => {
+        fireEvent.click(screen.getByRole('menuitem', { name: '删除当前卡片' }));
+      });
+      // The progress notice about card 1 is not shown on card 2.
+      expect(screen.getByRole('status').textContent).toMatch(/^已删除卡片 1/);
       await settle(() => release());
       expect(editor.readAnkiCards()[0].cards).toEqual([
         { id: 'c2', front: '', back: 'A2' },

@@ -20,7 +20,8 @@ export interface Translations {
   'anki.back': string;
   'anki.tags': string;
   'anki.tagsPlaceholder': string;
-  'anki.delete': string;
+  'anki.deleteCurrent': string;
+  'anki.deleted': string;
   'anki.empty': string;
   'anki.select': string;
   'anki.emptyFront': string;

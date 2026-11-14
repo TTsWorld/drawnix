@@ -567,3 +567,15 @@ export const StraightLineIcon = createIcon(
     </g>
   </svg>
 );
+
+export const ChevronDownIcon = createIcon(
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor">
+    <path strokeWidth="1.5" d="M5.833 8.333 10 12.5l4.167-4.167" />
+  </svg>
+);
+
+export const PlusIcon = createIcon(
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor">
+    <path strokeWidth="1.5" d="M10 4.167v11.666M4.167 10h11.666" />
+  </svg>
+);

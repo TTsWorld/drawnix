@@ -35,7 +35,8 @@ import {
 import { serializeDrawnixBoard } from '../editor';
 import { useDrawnix } from '../hooks/use-drawnix';
 import { useI18n, type Translations } from '../i18n';
-import { AnkiCardIcon, ImageIcon, TrashIcon } from './icons';
+import { AnkiCardIcon, ImageIcon, PlusIcon } from './icons';
+import { AnkiCardPicker } from './mindmap-anki-card-picker';
 import { ToolButton } from './tool-button';
 import {
   closeMindWidgetPanel,
@@ -50,7 +51,6 @@ import './mindmap-anki-cards.scss';
 
 // The note badge (24px) and a 4px gap come first when a node has both.
 const NOTE_BADGE_OFFSET = 28;
-const NEW_CARD_OPTION = '__new__';
 const SIDES: MindmapAnkiCardSide[] = ['front', 'back'];
 
 type RawCard = Record<string, unknown>;
@@ -165,6 +165,17 @@ type Notice = {
   /** Card the notice is about; it is shown only with that card. */
   cardId?: string;
 };
+
+function renderNotice(notice: Notice) {
+  return (
+    <p
+      className={`drawnix-anki-notice drawnix-anki-notice--${notice.kind}`}
+      role={notice.kind === 'error' ? 'alert' : 'status'}
+    >
+      {notice.text}
+    </p>
+  );
+}
 
 function imageErrorText(
   error: unknown,
@@ -386,15 +397,21 @@ export const MindmapAnkiCards = () => {
     }
   };
 
+  /** One undo step; the notice tells how to bring the card back. */
   const deleteCard = () => {
     if (!node || !current) return;
     const neighbour = cards[index + 1] ?? cards[index - 1];
-    updateCards(
+    const deleted = updateCards(
       node.id,
       (raw) => raw.filter((card) => card?.id !== current.id),
       false
     );
+    if (!deleted) return;
     select(neighbour?.id ?? null);
+    setNotice({
+      kind: 'status',
+      text: t('anki.deleted').replace('{card}', cardName),
+    });
     setPendingFocus(
       neighbour ? fieldSelector(neighbour.id, side) : '.drawnix-anki-add'
     );
@@ -590,14 +607,36 @@ export const MindmapAnkiCards = () => {
           }}
         >
           <header>
-            <span>
-              {t('anki.title')}
-              {cards.length > 0 && (
-                <span className="drawnix-anki-count">{cards.length}</span>
-              )}
-            </span>
+            {current ? (
+              <AnkiCardPicker
+                items={cards.map((card, i) => ({
+                  id: card.id,
+                  label: `${t('anki.card')} ${i + 1} · ${summarize(
+                    card.front,
+                    t('anki.emptyFront')
+                  )}`,
+                }))}
+                currentIndex={index}
+                selectLabel={t('anki.select')}
+                deleteLabel={t('anki.deleteCurrent')}
+                onSelect={(cardId) => select(cardId)}
+                onDelete={deleteCard}
+              />
+            ) : (
+              <span>{t('anki.title')}</span>
+            )}
             <button
               type="button"
+              className="drawnix-anki-add"
+              aria-label={t('anki.new')}
+              title={t('anki.new')}
+              onClick={addCard}
+            >
+              {PlusIcon}
+            </button>
+            <button
+              type="button"
+              className="drawnix-anki-close"
               aria-label={t('anki.close')}
               title={t('anki.close')}
               onClick={close}
@@ -608,13 +647,7 @@ export const MindmapAnkiCards = () => {
           {!current ? (
             <div className="drawnix-anki-empty">
               <p>{t('anki.empty')}</p>
-              <button
-                type="button"
-                className="drawnix-anki-add"
-                onClick={addCard}
-              >
-                + {t('anki.new')}
-              </button>
+              {notice && !notice.cardId && renderNotice(notice)}
             </div>
           ) : (
             <section
@@ -622,35 +655,6 @@ export const MindmapAnkiCards = () => {
               aria-label={cardName}
               data-anki-card-id={current.id}
             >
-              <div className="drawnix-anki-card-bar">
-                <select
-                  aria-label={t('anki.select')}
-                  value={current.id}
-                  onChange={(event) => {
-                    if (event.target.value === NEW_CARD_OPTION) addCard();
-                    else select(event.target.value);
-                  }}
-                >
-                  {cards.map((card, i) => (
-                    <option key={card.id} value={card.id}>
-                      {`${t('anki.card')} ${i + 1} · ${summarize(
-                        card.front,
-                        t('anki.emptyFront')
-                      )}`}
-                    </option>
-                  ))}
-                  <option value={NEW_CARD_OPTION}>+ {t('anki.new')}</option>
-                </select>
-                <button
-                  type="button"
-                  className="drawnix-anki-delete"
-                  aria-label={`${t('anki.delete')}: ${cardName}`}
-                  title={t('anki.delete')}
-                  onClick={deleteCard}
-                >
-                  {TrashIcon}
-                </button>
-              </div>
               <div
                 className="drawnix-anki-tabs"
                 role="tablist"
@@ -767,14 +771,9 @@ export const MindmapAnkiCards = () => {
                   />
                 </div>
                 <p className="drawnix-anki-hint">{t('anki.imageHint')}</p>
-                {notice && (!notice.cardId || notice.cardId === current.id) && (
-                  <p
-                    className={`drawnix-anki-notice drawnix-anki-notice--${notice.kind}`}
-                    role={notice.kind === 'error' ? 'alert' : 'status'}
-                  >
-                    {notice.text}
-                  </p>
-                )}
+                {notice &&
+                  (!notice.cardId || notice.cardId === current.id) &&
+                  renderNotice(notice)}
               </div>
               <label htmlFor={fieldId(current.id, 'tags')}>
                 {t('anki.tags')}

@@ -1,0 +1,170 @@
+// Card picker of the Anki panel: its button is the panel title and opens a
+// menu that lists the cards and ends with "delete current card".
+import { useEffect, useId, useRef, useState } from 'react';
+import type React from 'react';
+import { ChevronDownIcon, TrashIcon } from './icons';
+
+export interface AnkiCardPickerItem {
+  id: string;
+  label: string;
+}
+
+export const AnkiCardPicker = ({
+  items,
+  currentIndex,
+  selectLabel,
+  deleteLabel,
+  onSelect,
+  onDelete,
+}: {
+  items: AnkiCardPickerItem[];
+  currentIndex: number;
+  /** Accessible name of the menu ("Select card"). */
+  selectLabel: string;
+  deleteLabel: string;
+  onSelect: (id: string) => void;
+  onDelete: () => void;
+}) => {
+  const menuId = useId();
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  // Index into the menu entries: cards first, then the delete entry.
+  const [active, setActive] = useState(currentIndex);
+  const entryCount = items.length + 1;
+  const current = items[currentIndex];
+
+  const openMenu = (at = currentIndex) => {
+    setActive(at);
+    setOpen(true);
+  };
+  const closeMenu = (returnFocus: boolean) => {
+    setOpen(false);
+    if (returnFocus) trigger.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    root.current
+      ?.querySelectorAll<HTMLElement>('[role^="menuitem"]')
+      [active]?.focus();
+  }, [open, active]);
+
+  // A press elsewhere, also inside the panel, closes only the menu.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (root.current && !event.composedPath().includes(root.current)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+  }, [open]);
+
+  // Cards can change while the menu is open (undo, Agent edits).
+  useEffect(() => {
+    setActive((value) => Math.min(value, entryCount - 1));
+  }, [entryCount]);
+
+  const onTriggerKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      openMenu(
+        event.key === 'ArrowUp' && !open ? entryCount - 1 : currentIndex
+      );
+    }
+  };
+
+  const onMenuKeyDown = (event: React.KeyboardEvent) => {
+    if (event.nativeEvent.isComposing) return;
+    const move = (at: number) => {
+      event.preventDefault();
+      setActive((at + entryCount) % entryCount);
+    };
+    switch (event.key) {
+      case 'ArrowDown':
+        return move(active + 1);
+      case 'ArrowUp':
+        return move(active - 1);
+      case 'Home':
+        return move(0);
+      case 'End':
+        return move(entryCount - 1);
+      case 'Escape':
+        // Close the menu, not the panel.
+        event.preventDefault();
+        event.stopPropagation();
+        return closeMenu(true);
+      case 'Tab':
+        return closeMenu(false);
+    }
+  };
+
+  return (
+    <div className="drawnix-anki-picker" ref={root}>
+      <button
+        ref={trigger}
+        type="button"
+        className="drawnix-anki-picker-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-label={`${selectLabel}: ${current?.label ?? ''}`}
+        onClick={() => (open ? closeMenu(false) : openMenu())}
+        onKeyDown={onTriggerKeyDown}
+      >
+        <span className="drawnix-anki-picker-label">{current?.label}</span>
+        <span className="drawnix-anki-picker-count" aria-hidden>
+          {currentIndex + 1}/{items.length}
+        </span>
+        {ChevronDownIcon}
+      </button>
+      {open && (
+        <div
+          id={menuId}
+          className="drawnix-anki-menu"
+          role="menu"
+          aria-label={selectLabel}
+          onKeyDown={onMenuKeyDown}
+        >
+          <div className="drawnix-anki-menu-cards">
+            {items.map((item, i) => (
+              <button
+                key={item.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={i === currentIndex}
+                tabIndex={i === active ? 0 : -1}
+                onPointerMove={() => i !== active && setActive(i)}
+                onClick={() => {
+                  closeMenu(true);
+                  onSelect(item.id);
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div role="separator" className="drawnix-anki-menu-separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="drawnix-anki-menu-delete"
+            tabIndex={active === items.length ? 0 : -1}
+            onPointerMove={() =>
+              active !== items.length && setActive(items.length)
+            }
+            onClick={() => {
+              closeMenu(false);
+              onDelete();
+            }}
+          >
+            {TrashIcon}
+            {deleteLabel}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
