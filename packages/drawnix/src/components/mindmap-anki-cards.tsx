@@ -43,8 +43,10 @@ import {
   findMindElement,
   getMindWidgetPanelProps,
   hasNote,
+  MIND_WIDGET_OPENER_CLASS_NAME,
   openMindWidget,
   setNodeFromInput,
+  useCloseOnOutsidePointerDown,
   useMindNodeBadges,
 } from './mindmap-widgets';
 import './mindmap-anki-cards.scss';
@@ -92,7 +94,7 @@ export const MindmapAnkiCardButton = () => {
   return (
     <ToolButton
       type="button"
-      className="property-button"
+      className={`property-button ${MIND_WIDGET_OPENER_CLASS_NAME}`}
       visible
       icon={AnkiCardIcon}
       title={label}
@@ -507,6 +509,7 @@ export const MindmapAnkiCards = () => {
   };
 
   const close = () => closeMindWidgetPanel(board, setAppState);
+  useCloseOnOutsidePointerDown(panel, !!node, setAppState);
   const closePreview = () => {
     setPreview(null);
     previewReturnFocus.current?.focus();
@@ -539,7 +542,7 @@ export const MindmapAnkiCards = () => {
             <button
               key={badge.id}
               type="button"
-              className={`drawnix-anki-badge ${ATTACHED_ELEMENT_CLASS_NAME}`}
+              className={`drawnix-anki-badge ${ATTACHED_ELEMENT_CLASS_NAME} ${MIND_WIDGET_OPENER_CLASS_NAME}`}
               style={{ left: badge.x + badge.value.offset, top: badge.y }}
               data-anki-node-id={badge.id}
               title={label}
@@ -556,6 +559,8 @@ export const MindmapAnkiCards = () => {
       {node && (
         <aside
           ref={panel}
+          // Presses on the panel background keep focus, and keys, in the panel.
+          tabIndex={-1}
           className={`drawnix-anki-panel ${ATTACHED_ELEMENT_CLASS_NAME} ${
             dragging ? 'drawnix-anki-panel--dragging' : ''
           }`}

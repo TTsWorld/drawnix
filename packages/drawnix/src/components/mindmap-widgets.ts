@@ -4,6 +4,7 @@ import {
   type Dispatch,
   type HTMLAttributes,
   type MutableRefObject,
+  type RefObject,
   type SetStateAction,
   useContext,
   useEffect,
@@ -101,6 +102,53 @@ export function closeMindWidgetPanel(
   const host =
     PlaitBoard.getBoardContainer(board).closest<HTMLElement>('.drawnix');
   host?.focus({ preventScroll: true });
+}
+
+/**
+ * Class of controls that open a widget panel (toolbar buttons, badges).
+ * Pressing one does not count as an outside press: it switches the panel.
+ */
+export const MIND_WIDGET_OPENER_CLASS_NAME = 'drawnix-mind-widget-opener';
+
+/**
+ * Closes the panel when a pointer goes down anywhere outside it: the board,
+ * other nodes, toolbars or the host page. Everything rendered inside the
+ * panel (menus, tabs, image preview) counts as inside.
+ *
+ * Inputs write to the document on every change, so nothing is pending except
+ * an IME composition. Blurring the focused field first makes the browser
+ * commit it, and its input event saves the text before the panel unmounts.
+ * Closing changes no document state, so history is untouched.
+ */
+export function useCloseOnOutsidePointerDown(
+  panel: RefObject<HTMLElement>,
+  open: boolean,
+  setAppState: Dispatch<SetStateAction<DrawnixState>>
+) {
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const element = panel.current;
+      if (!element) return;
+      const path = event.composedPath();
+      if (path.includes(element)) return;
+      const opener = path.some(
+        (target) =>
+          target instanceof Element &&
+          target.classList.contains(MIND_WIDGET_OPENER_CLASS_NAME)
+      );
+      if (opener) return;
+      const active = element.ownerDocument.activeElement;
+      if (active instanceof HTMLElement && element.contains(active)) {
+        active.blur();
+      }
+      // The pressed target takes focus itself; do not move it to the board.
+      openMindWidget(setAppState, null);
+    };
+    // Capture: the board and toolbars may stop the event before it bubbles.
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+  }, [panel, open, setAppState]);
 }
 
 /**

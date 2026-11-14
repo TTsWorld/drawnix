@@ -64,6 +64,29 @@ describe('mind-map note editing', () => {
     }
   );
 
+  it('closes on a press outside the panel after saving the typed text', async () => {
+    const { input, editor, board } = await setup('A');
+    input.focus();
+    await act(async () => {
+      fireEvent.input(input, { target: { value: 'A1' } });
+    });
+    await act(async () => {
+      fireEvent.pointerDown(input);
+      fireEvent.pointerDown(screen.getByRole('complementary'));
+    });
+    expect(screen.getByRole('complementary')).toBeTruthy();
+    await act(async () => {
+      fireEvent.pointerDown(document.body);
+    });
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(document.activeElement).not.toBe(input);
+    expect(JSON.parse(editor.serialize()).elements[0].note).toBe('A1');
+    await act(async () => {
+      board.undo();
+    });
+    expect(JSON.parse(editor.serialize()).elements[0].note).toBe('A');
+  });
+
   it('keeps the caret in the middle while updating the document', async () => {
     const { input, editor } = await setup('abcdef');
     input.setSelectionRange(3, 3);

@@ -343,6 +343,92 @@ describe('mind-map Anki cards', () => {
     }
   );
 
+  describe('closing on a press outside the panel', () => {
+    const panel = () => screen.queryByRole('complementary');
+    const pressOn = (target: Element) =>
+      act(async () => {
+        fireEvent.pointerDown(target);
+      });
+
+    it('closes on the board or another node, keeping the typed text and its undo step', async () => {
+      const { editor, board } = await setup({
+        cards: [{ id: 'c1', front: 'Q', back: 'A' }],
+      });
+      const front = field('卡片 1 正面');
+      front.focus();
+      await type(front, 'Q1');
+      await type(front, 'Q12');
+      const undos = board.history.undos.length;
+      // Stands in for the board canvas and other nodes.
+      const canvas = document.createElement('div');
+      document.body.append(canvas);
+      try {
+        await pressOn(canvas);
+      } finally {
+        canvas.remove();
+      }
+      expect(panel()).toBeNull();
+      // Focus left the field first, so an IME composition would be committed.
+      expect(document.activeElement).not.toBe(front);
+      expect(editor.readAnkiCards()[0].cards[0].front).toBe('Q12');
+      expect(board.history.undos).toHaveLength(undos);
+      await act(async () => {
+        board.undo();
+      });
+      expect(editor.readAnkiCards()[0].cards[0].front).toBe('Q');
+    });
+
+    it('stays open for presses on its tabs, menu, image controls and preview', async () => {
+      setAnkiImageCodecForTesting(fakeCodec);
+      try {
+        await setup({ cards: [{ id: 'c1', front: 'Q', back: 'A' }] });
+        await pressOn(screen.getByRole('tab', { name: '背面' }));
+        await pressOn(trigger());
+        await openMenu();
+        await pressOn(screen.getByRole('menuitemradio', { name: /^卡片 1/ }));
+        await pressOn(field('卡片 1 正面'));
+        await pressOn(addButton());
+        await pressOn(screen.getByRole('button', { name: '添加图片' }));
+        const input = screen.getByTestId('drawnix-anki-image-input');
+        await settle(() =>
+          fireEvent.change(input, { target: { files: [png()] } })
+        );
+        await act(async () => {
+          fireEvent.click(
+            screen.getByRole('button', { name: '查看大图: 图片 1' })
+          );
+        });
+        await pressOn(screen.getByRole('dialog', { name: '图片 1' }));
+        expect(panel()).toBeTruthy();
+      } finally {
+        setAnkiImageCodecForTesting();
+      }
+    });
+
+    it('switches instead of closing when the press opens another widget', async () => {
+      await setup({
+        note: 'n',
+        cards: [{ id: 'c1', front: 'Q', back: 'A' }],
+      });
+      const noteBadge = screen.getByRole('button', {
+        name: '打开备注: Original',
+      });
+      await pressOn(noteBadge);
+      expect(
+        screen.getByRole('complementary', { name: 'Anki 卡片' })
+      ).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(noteBadge);
+      });
+      expect(
+        screen.getByRole('complementary', { name: '节点备注' })
+      ).toBeTruthy();
+      // The note panel closes on outside presses too.
+      await pressOn(document.body);
+      expect(panel()).toBeNull();
+    });
+  });
+
   it('closes with Escape and when the node is deleted', async () => {
     const { board } = await setup({
       cards: [{ id: 'c1', front: 'Q', back: 'A' }],

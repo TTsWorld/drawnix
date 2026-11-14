@@ -15,8 +15,10 @@ import {
   findMindElement,
   getMindWidgetPanelProps,
   hasNote,
+  MIND_WIDGET_OPENER_CLASS_NAME,
   openMindWidget,
   setNodeFromInput,
+  useCloseOnOutsidePointerDown,
   useMindNodeBadges,
 } from './mindmap-widgets';
 import './mindmap-notes.scss';
@@ -34,7 +36,7 @@ export const MindmapNoteButton = () => {
   return (
     <ToolButton
       type="button"
-      className="property-button"
+      className={`property-button ${MIND_WIDGET_OPENER_CLASS_NAME}`}
       visible
       icon={NoteIcon}
       title={label}
@@ -48,6 +50,7 @@ export const MindmapNotes = () => {
   const board = useBoard();
   const { t } = useI18n();
   const { appState, setAppState } = useDrawnix();
+  const panel = useRef<HTMLElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const lastInputOperation = useRef<PlaitOperation | null>(null);
   const badges = useMindNodeBadges(board, (element) =>
@@ -69,6 +72,7 @@ export const MindmapNotes = () => {
   }, [node?.id, appState.openNoteId, setAppState]);
 
   const close = () => closeMindWidgetPanel(board, setAppState);
+  useCloseOnOutsidePointerDown(panel, !!node, setAppState);
 
   return (
     <>
@@ -77,7 +81,7 @@ export const MindmapNotes = () => {
           <button
             key={badge.id}
             type="button"
-            className={`drawnix-note-badge ${ATTACHED_ELEMENT_CLASS_NAME}`}
+            className={`drawnix-note-badge ${ATTACHED_ELEMENT_CLASS_NAME} ${MIND_WIDGET_OPENER_CLASS_NAME}`}
             style={{ left: badge.x, top: badge.y }}
             data-note-node-id={badge.id}
             title={`${t('notes.open')}: ${badge.topic}`}
@@ -91,6 +95,9 @@ export const MindmapNotes = () => {
       </div>
       {node && (
         <aside
+          ref={panel}
+          // Presses on the panel background keep focus, and keys, in the panel.
+          tabIndex={-1}
           className={`drawnix-note-panel ${ATTACHED_ELEMENT_CLASS_NAME}`}
           aria-label={t('notes.title')}
           {...getMindWidgetPanelProps(board, close, lastInputOperation)}
