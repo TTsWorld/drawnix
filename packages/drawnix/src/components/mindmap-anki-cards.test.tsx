@@ -45,14 +45,21 @@ async function setup({
   note,
   cards,
   open = true,
-}: { note?: string; cards?: MindmapAnkiCard[]; open?: boolean } = {}) {
+  openNote = false,
+}: {
+  note?: string;
+  cards?: MindmapAnkiCard[];
+  open?: boolean;
+  openNote?: boolean;
+} = {}) {
   const document = createMindmapDocument('# Original\n## Child');
   const root = document.elements[0] as PlaitElement;
   if (note) root.note = note;
   if (cards) root.ankiCards = cards;
   return renderMindmapWidgets(
     document.elements,
-    (id) => ({ openAnkiCardsId: open ? id : null }),
+    (id) =>
+      openNote ? { openNoteId: id } : { openAnkiCardsId: open ? id : null },
     <>
       <MindmapNotes />
       <MindmapAnkiCards />
@@ -96,14 +103,46 @@ async function addCard() {
 }
 
 describe('mind-map Anki cards', () => {
-  it('creates a card prefilled from the title and note, then keeps it independent', async () => {
+  it('keeps note text out of existing and new cards', async () => {
+    const { editor } = await setup({
+      openNote: true,
+      cards: [{ id: 'c1', front: 'Q', back: '' }],
+    });
+    await type(screen.getByRole('textbox', { name: '备注内容' }), '111');
+    expect(JSON.parse(editor.serialize()).elements[0].note).toBe('111');
+    // Cards are untouched by note input.
+    expect(editor.readAnkiCards()[0].cards).toEqual([
+      { id: 'c1', front: 'Q', back: '' },
+    ]);
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: '打开 Anki 卡片: Original (1)' })
+      );
+    });
+    expect(field('卡片 1 正面').value).toBe('Q');
+    expect(screen.queryByDisplayValue('111')).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('tab', { name: '背面' }));
+    });
+    expect(field('卡片 1 背面').value).toBe('');
+
+    // A new card starts with the node title on the front and nothing from the note.
+    await addCard();
+    const [, created] = editor.readAnkiCards()[0].cards;
+    expect(created).toMatchObject({ front: 'Original', back: '' });
+    expect(JSON.stringify(editor.readAnkiCards())).not.toContain('111');
+    expect(screen.queryByDisplayValue('111')).toBeNull();
+    expect(JSON.parse(editor.serialize()).elements[0].note).toBe('111');
+  });
+
+  it('creates a card prefilled from the title only, then keeps it independent', async () => {
     const { editor, id, board } = await setup({ note: 'Note text' });
     expect(screen.getByText('这个节点还没有卡片')).toBeTruthy();
     await addCard();
     const [entry] = editor.readAnkiCards();
     expect(entry).toMatchObject({
       nodeId: id,
-      cards: [{ front: 'Original', back: 'Note text' }],
+      cards: [{ front: 'Original', back: '' }],
     });
     expect(entry.cards[0]).not.toHaveProperty('tags');
     expect(document.activeElement).toBe(field('卡片 1 正面'));
@@ -116,7 +155,7 @@ describe('mind-map Anki cards', () => {
     });
     expect(editor.readAnkiCards()[0].cards[0]).toMatchObject({
       front: 'Original',
-      back: 'Note text',
+      back: '',
     });
 
     await act(async () => {

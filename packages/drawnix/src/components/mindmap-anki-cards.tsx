@@ -60,11 +60,16 @@ function getRawCards(element: MindElement): RawCard[] {
   return Array.isArray(element.ankiCards) ? element.ankiCards : [];
 }
 
+/**
+ * The front starts with the node title, the usual question. The note is not
+ * copied: notes and cards are separate content, and a copy would look like
+ * the two were linked.
+ */
 export function createAnkiCardForNode(element: MindElement): MindmapAnkiCard {
   return {
     id: createAnkiCardId(),
     front: Node.string(element.data.topic),
-    back: typeof element.note === 'string' ? element.note : '',
+    back: '',
   };
 }
 
