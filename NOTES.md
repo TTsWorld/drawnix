@@ -193,8 +193,15 @@ Both the standalone package build and the Nx library build emit `README.md`,
 in the final archive before publishing, including after building the web app.
 
 Use the versioned package archive for consumers. Do not depend on a sibling
-checkout or a developer's `npm link`. The fork keeps Plait as a dependency,
-currently pinned to the versions used by the host (0.92.3).
+checkout or a developer's `npm link`. Plait (`@plait/*` ~0.92.3,
+`@plait-board/react-board` and `react-text` 0.4.0-2) and Slate are peer
+dependencies: the host installs them, so there is exactly one copy of each.
+Plait keeps board state in module-level WeakMaps, and a second copy would
+break it. npm 7+ installs missing peers automatically.
+
+The `./editor` entry is ESM only, because Plait ships only ESM. Import it
+from ESM, or from CommonJS on Node 20.19+ / 22.12+ (`require()` of ESM).
+The main entry keeps its CommonJS build for bundlers.
 
 Manual acceptance: create a node, add multiline notes, close/reopen the panel,
 rename and duplicate the node, remove a note and undo/redo, export/import the
