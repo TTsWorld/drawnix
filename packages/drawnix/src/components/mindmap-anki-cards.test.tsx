@@ -269,7 +269,7 @@ describe('mind-map Anki cards', () => {
     expect(stored).toEqual([{ id: 'c1', front: 'Q2', back: 'A', extra: 1 }]);
   });
 
-  it('shows the card count on the node button and switches panels from the node buttons', async () => {
+  it('fills the card button when the node has cards and switches panels from the node buttons', async () => {
     const { editor, id, board } = await setup({ open: false });
     expect(screen.queryByRole('complementary')).toBeNull();
     await act(async () => {
@@ -423,13 +423,13 @@ describe('mind-map Anki cards', () => {
         note: 'n',
         cards: [{ id: 'c1', front: 'Q', back: 'A' }],
       });
-      const noteBadge = nodeAction('Original', '打开备注');
-      await pressOn(noteBadge);
+      const noteButton = nodeAction('Original', '打开备注');
+      await pressOn(noteButton);
       expect(
         screen.getByRole('complementary', { name: 'Anki 卡片' })
       ).toBeTruthy();
       await act(async () => {
-        fireEvent.click(noteBadge);
+        fireEvent.click(noteButton);
       });
       expect(
         screen.getByRole('complementary', { name: '节点备注' })
