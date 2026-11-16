@@ -8,6 +8,7 @@ import {
   type SetStateAction,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 import { BoardContext } from '@plait-board/react-board';
@@ -29,7 +30,7 @@ import {
   type PlaitMindBoard,
 } from '@plait/mind';
 import { Node } from 'slate';
-import { getAnkiCards } from '../anki-cards';
+import { nodeHasAnkiCards } from '../anki-cards';
 import { findElementById } from '../mind-tree';
 import type { DrawnixState } from '../hooks/use-drawnix';
 import { getCanvasColor, getNodeAccent } from './mindmap-node-accent';
@@ -257,6 +258,7 @@ function getContentPadding(board: PlaitBoard, element: MindElement) {
 export function useMindNodeRects(board: PlaitBoard): MindNodeRect[] {
   const boardVersion = useContext(BoardContext)?.v;
   const [rects, setRects] = useState<MindNodeRect[]>([]);
+  const latestUpdate = useRef<() => void>(() => undefined);
 
   // react-board advances its version after Plait refreshes layout references.
   // A local draft render can see new children before those references exist.
@@ -303,7 +305,7 @@ export function useMindNodeRects(board: PlaitBoard): MindNodeRect[] {
           right,
           bottom,
           hasNote: hasNote(node),
-          hasCards: getAnkiCards(node).length > 0,
+          hasCards: nodeHasAnkiCards(node),
           contentTop,
           contentBottom,
           fontSize: Number.isFinite(fontSize) ? fontSize : 0,
@@ -312,11 +314,18 @@ export function useMindNodeRects(board: PlaitBoard): MindNodeRect[] {
       });
       setRects(result);
     };
+    latestUpdate.current = update;
     update();
-    const observer = new ResizeObserver(update);
+  }, [board, boardVersion]);
+
+  // One observer per board, not one per board change (each pan or zoom).
+  useEffect(() => {
+    const host = PlaitBoard.getBoardContainer(board).closest('.drawnix');
+    if (!host) return;
+    const observer = new ResizeObserver(() => latestUpdate.current());
     observer.observe(host);
     return () => observer.disconnect();
-  }, [board, boardVersion]);
+  }, [board]);
 
   return rects;
 }

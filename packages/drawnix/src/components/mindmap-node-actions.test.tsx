@@ -96,6 +96,31 @@ const pointer = (target: Element, type: string, init: MouseEventInit = {}) =>
   });
 
 describe('node action buttons', () => {
+  it('keeps one resize observer per board across pans, zooms and edits', async () => {
+    const created: Array<() => void> = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          created.push(callback);
+        }
+        observe = vi.fn();
+        disconnect = vi.fn();
+      }
+    );
+    const { board, id } = await setup();
+    const count = created.length;
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < 3; i++) {
+      await act(async () => board.afterChange());
+    }
+    expect(created).toHaveLength(count);
+    // The observer still measures with the latest layout.
+    const before = dot(id)?.style.left;
+    await act(async () => created.forEach((callback) => callback()));
+    expect(dot(id)?.style.left).toBe(before);
+  });
+
   it('keeps nodes clean at rest, with only a hidden dot on nodes with content', async () => {
     const { id, childId } = await setup();
     expect(bars()).toHaveLength(0);

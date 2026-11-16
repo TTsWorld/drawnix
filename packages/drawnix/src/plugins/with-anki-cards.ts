@@ -1,7 +1,7 @@
 import {
   type PlaitBoard,
   PlaitHistoryBoard,
-  type PlaitOperation,
+  PlaitOperation,
   Transforms,
   WritableClipboardOperationType,
 } from '@plait/core';
@@ -109,6 +109,19 @@ export const withAnkiCards = (board: PlaitBoard) => {
   };
   board.afterChange = () => {
     afterChange();
+    // Panning, zooming and selecting change no elements: skip the full scan.
+    const { operations } = board;
+    if (
+      operations?.length &&
+      operations.every(
+        (operation) =>
+          PlaitOperation.isSetViewportOperation(operation) ||
+          PlaitOperation.isSetSelectionOperation(operation) ||
+          PlaitOperation.isSetThemeOperation(operation)
+      )
+    ) {
+      return;
+    }
     scheduleRepair();
   };
   // Documents passed in at creation have no change notification.

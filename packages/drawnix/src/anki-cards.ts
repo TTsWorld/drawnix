@@ -167,6 +167,12 @@ export function getAnkiCards(
   });
 }
 
+/** Whether a node has at least one card, without reading the cards. */
+export function nodeHasAnkiCards(element: PlaitElement | undefined): boolean {
+  const value = element?.['ankiCards'];
+  return Array.isArray(value) && value.some(isStoredAnkiCard);
+}
+
 function forEachMindElement(
   elements: PlaitElement[],
   visit: (element: MindElement) => void
