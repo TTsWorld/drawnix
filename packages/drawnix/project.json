@@ -8,16 +8,39 @@
   "targets": {
     "build": {
       "options": {
-        "env": { "NODE_ENV": "production" }
+        "env": {
+          "NODE_ENV": "production"
+        }
       },
       "inputs": [
         "production",
         "^production",
-        { "externalDependencies": ["vite"] },
+        {
+          "externalDependencies": ["vite"]
+        },
         "{workspaceRoot}/NOTES.md",
         "{workspaceRoot}/LICENSE",
         "{workspaceRoot}/LICENSES/stair-Apache-2.0.txt"
       ]
+    },
+    "test-vitest": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "vitest run --config vitest.config.ts"
+      },
+      "cache": true,
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/vitest.config.ts",
+        {
+          "externalDependencies": ["vitest"]
+        }
+      ]
+    },
+    "test": {
+      "dependsOn": ["test-vitest"]
     }
   }
 }
