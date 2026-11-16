@@ -29,33 +29,51 @@ import {
 } from './mindmap-widgets';
 import './mindmap-node-actions.scss';
 
-/** Button diameter in screen pixels at zoom 1 and above (fixed, like the reference). */
-export const NODE_ACTION_SIZE = 22;
-/** Zoomed out, buttons shrink with the node down to this size. */
-export const NODE_ACTION_MIN_SIZE = 18;
-/** Smallest size buttons shrink to when a neighbour leaves too little room. */
-export const NODE_ACTION_FIT_MIN_SIZE = 14;
-const NODE_ACTION_COUNT = 2;
-export const NODE_ACTION_GAP = 6;
+// The buttons are a secondary way into a node; its text is the content. So
+// they are sized from the node's text on screen, never larger than one line
+// of it, and grow and shrink with zoom and font size.
 /**
- * Each button takes presses this far past its edge (28px on a 22px button);
- * it also covers the 2px canvas-colored ring around the button.
+ * Button diameter, as a share of the node's font size: under one line, and
+ * small enough that both buttons stay well within a two-character node.
  */
-export const NODE_ACTION_HIT_PAD = 3;
-/** Room kept between the press area and a neighbouring node. */
+export const NODE_ACTION_SIZE_RATIO = 0.9;
+/** Icon size, as a share of the node's font size. */
+export const NODE_ACTION_ICON_RATIO = 0.6;
+/** Space between the two buttons, as a share of the button diameter. */
+export const NODE_ACTION_GAP_RATIO = 0.25;
+/** Below this diameter an icon is unreadable: the buttons show as plain dots. */
+export const NODE_ACTION_ICON_MIN_SIZE = 9;
+/** Smallest diameter buttons shrink to when a neighbour leaves too little room. */
+export const NODE_ACTION_FIT_MIN_SIZE = 6;
+/** Each button takes presses in a square of this size, where there is room. */
+export const NODE_ACTION_HIT_SIZE = 24;
+/** The canvas-colored ring that cuts the node's border around each button. */
+const NODE_ACTION_RING = 1;
+/** Room kept between the buttons (or their press areas) and a neighbour. */
 const NODE_ACTION_CLEARANCE = 2;
+/** Room kept between the buttons and the node's text inside the node. */
+const NODE_ACTION_TEXT_CLEARANCE = 1;
 // Leaving the node for a gap next to the buttons must not drop them at once.
 const HOVER_LEAVE_DELAY = 150;
 /** Fade-out of buttons that are no longer shown; matches the stylesheet. */
 export const NODE_ACTION_EXIT_DURATION = 120;
 
-export function getNodeActionSize(zoom: number) {
-  return Math.round(
-    Math.min(
-      NODE_ACTION_SIZE,
-      Math.max(NODE_ACTION_MIN_SIZE, NODE_ACTION_SIZE * zoom)
-    )
-  );
+/** Diameter for a node whose text is `fontSize` screen pixels: never larger. */
+export function getNodeActionSize(fontSize: number) {
+  return Math.max(1, Math.floor(fontSize * NODE_ACTION_SIZE_RATIO));
+}
+
+export function getNodeActionGap(size: number) {
+  return Math.max(2, Math.round(size * NODE_ACTION_GAP_RATIO));
+}
+
+/**
+ * How far the press area of each button reaches past the circle. Across, it
+ * grows outwards only, so the two buttons meet in the middle of the gap and
+ * never take each other's presses.
+ */
+function getOuterHitPad(size: number, gap: number) {
+  return Math.max(0, NODE_ACTION_HIT_SIZE - size - gap / 2);
 }
 
 export interface NodeActionPlacement {
@@ -64,11 +82,11 @@ export interface NodeActionPlacement {
   /** Center of the row: on the bottom (or top) border of the node. */
   y: number;
   size: number;
+  gap: number;
   side: 'below' | 'above';
+  /** Press area past the circle above, below and on the outer sides. */
+  hit: { top: number; bottom: number; outer: number };
 }
-
-/** Room kept between the buttons and the node's text inside the node. */
-const NODE_ACTION_TEXT_CLEARANCE = 1;
 
 /**
  * Places a node's buttons centered on its bottom border, half inside the
@@ -80,58 +98,84 @@ const NODE_ACTION_TEXT_CLEARANCE = 1;
  * buttons go on the top border, and if neither side has room they shrink to
  * fit the larger gap. Only when even the smallest size does not fit (far
  * zoomed out) do they stay below and cover the neighbour while shown.
+ *
+ * Press areas fill up to 24px where they reach neither the node's text nor a
+ * neighbour; next to them they are smaller.
  */
 export function placeNodeActions(
   rect: MindNodeRect,
   rects: MindNodeRect[],
-  size: number
+  size = getNodeActionSize(rect.fontSize)
 ): NodeActionPlacement {
   const x = (rect.left + rect.right) / 2;
-  const halfWidth =
-    (NODE_ACTION_COUNT * size + (NODE_ACTION_COUNT - 1) * NODE_ACTION_GAP) /
-      2 +
-    NODE_ACTION_HIT_PAD;
+  const startGap = getNodeActionGap(size);
+  const halfWidth = size + startGap / 2 + getOuterHitPad(size, startGap);
   let below = Infinity;
   let above = Infinity;
   for (const other of rects) {
     if (other.id === rect.id) continue;
     if (other.right <= x - halfWidth || other.left >= x + halfWidth) continue;
-    if (other.top >= rect.bottom) below = Math.min(below, other.top - rect.bottom);
+    if (other.top >= rect.bottom)
+      below = Math.min(below, other.top - rect.bottom);
     else if (other.bottom <= rect.top)
       above = Math.min(above, rect.top - other.bottom);
   }
+  const room = { below, above };
   const inside = {
     below: rect.bottom - rect.contentBottom - NODE_ACTION_TEXT_CLEARANCE,
     above: rect.contentTop - rect.top - NODE_ACTION_TEXT_CLEARANCE,
   };
+  type Side = 'below' | 'above';
   // How far a row of this size goes into the node, at most half of it.
-  const overlap = (side: 'below' | 'above', value: number) =>
+  const overlap = (side: Side, value: number) =>
     Math.max(0, Math.min(value / 2, inside[side]));
-  // Height the row takes outside the node, press areas and clearance included.
-  const outside = (side: 'below' | 'above', value: number) =>
-    value - overlap(side, value) + NODE_ACTION_HIT_PAD + NODE_ACTION_CLEARANCE;
-  const place = (side: 'below' | 'above', value: number) => {
-    const offset = value / 2 - overlap(side, value);
+  // Height the visible row takes outside the node, with ring and clearance.
+  const outside = (side: Side, value: number) =>
+    value - overlap(side, value) + NODE_ACTION_RING + NODE_ACTION_CLEARANCE;
+  const place = (side: Side, value: number): NodeActionPlacement => {
+    const into = overlap(side, value);
+    const offset = value / 2 - into;
+    const gap = getNodeActionGap(value);
+    // Up to 24px tall: toward the text only to its clearance, outward only
+    // to the neighbour's clearance; what one side lacks the other may take.
+    const extra = Math.max(0, NODE_ACTION_HIT_SIZE - value);
+    const maxIn = Math.max(0, inside[side] - into);
+    const maxOut = Math.max(
+      0,
+      room[side] - (value - into) - NODE_ACTION_CLEARANCE
+    );
+    let hitIn = Math.min(maxIn, extra / 2);
+    const hitOut = Math.min(maxOut, extra - hitIn);
+    hitIn = Math.min(maxIn, extra - hitOut);
     return {
       x,
       y: side === 'below' ? rect.bottom + offset : rect.top - offset,
       size: value,
+      gap,
       side,
+      hit: {
+        top: side === 'below' ? hitIn : hitOut,
+        bottom: side === 'below' ? hitOut : hitIn,
+        outer: getOuterHitPad(value, gap),
+      },
     };
   };
   if (outside('below', size) <= below) return place('below', size);
   if (outside('above', size) <= above) return place('above', size);
-  const side = above > below ? 'above' : 'below';
-  const room = side === 'above' ? above : below;
+  const side: Side = above > below ? 'above' : 'below';
+  const smallest = Math.min(size, NODE_ACTION_FIT_MIN_SIZE);
   let fit = size;
-  while (fit > NODE_ACTION_FIT_MIN_SIZE && outside(side, fit) > room) fit--;
+  while (fit > smallest && outside(side, fit) > room[side]) fit--;
   return place(side, fit);
 }
 
 /** Vertical strip a placed row takes presses in, press areas included. */
 export function getNodeActionStrip(placement: NodeActionPlacement) {
-  const half = placement.size / 2 + NODE_ACTION_HIT_PAD;
-  return { top: placement.y - half, bottom: placement.y + half };
+  const half = placement.size / 2;
+  return {
+    top: placement.y - half - placement.hit.top,
+    bottom: placement.y + half + placement.hit.bottom,
+  };
 }
 
 /**
@@ -178,7 +222,7 @@ export const MindmapNodeActions = () => {
   // Hide while the pointer is held on the board: dragging, moving, selecting.
   const [pressing, setPressing] = useState(false);
   const bars = useRef(new Map<string, HTMLElement>());
-  const latest = useRef({ rects, hoveredId, size: NODE_ACTION_SIZE });
+  const latest = useRef({ rects, hoveredId });
   // Buttons that were just hidden fade out from their last place.
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
   const shown = useRef<ReadonlySet<string>>(new Set());
@@ -187,9 +231,7 @@ export const MindmapNodeActions = () => {
   const readonly = PlaitBoard.isReadonly(board);
   // The tool switch updates app state, which renders this again.
   const selecting = isSelecting(board);
-  const zoom = board.viewport?.zoom ?? 1;
-  const size = getNodeActionSize(zoom);
-  latest.current = { rects, hoveredId, size };
+  latest.current = { rects, hoveredId };
   const canvas = getCanvasColor(board);
 
   const selected = getSelectedElements(board);
@@ -244,12 +286,15 @@ export const MindmapNodeActions = () => {
         return;
       }
       // Panels and toolbars cover the board; only the board itself hovers nodes.
-      if (!(event.target instanceof Node) || !container.contains(event.target)) {
+      if (
+        !(event.target instanceof Node) ||
+        !container.contains(event.target)
+      ) {
         setHovered(null);
         return;
       }
       const bounds = host.getBoundingClientRect();
-      const { rects, hoveredId, size } = latest.current;
+      const { rects, hoveredId } = latest.current;
       const hoveredRect = rects.find((rect) => rect.id === hoveredId);
       setHovered(
         hitNodeRect(
@@ -259,9 +304,7 @@ export const MindmapNodeActions = () => {
           hoveredRect
             ? {
                 id: hoveredRect.id,
-                ...getNodeActionStrip(
-                  placeNodeActions(hoveredRect, rects, size)
-                ),
+                ...getNodeActionStrip(placeNodeActions(hoveredRect, rects)),
               }
             : null
         )
@@ -399,9 +442,10 @@ export const MindmapNodeActions = () => {
   };
 
   const renderBar = (rect: MindNodeRect, ghost: boolean) => {
-    const placement = placeNodeActions(rect, rects, size);
+    const placement = placeNodeActions(rect, rects);
     const noteOpen = !ghost && openWidget === 'note' && openId === rect.id;
-    const cardsOpen = !ghost && openWidget === 'ankiCards' && openId === rect.id;
+    const cardsOpen =
+      !ghost && openWidget === 'ankiCards' && openId === rect.id;
     const noteLabel = t(rect.hasNote ? 'notes.open' : 'notes.add');
     const cardsLabel = rect.cardCount
       ? `${t('anki.open')} (${rect.cardCount})`
@@ -410,7 +454,13 @@ export const MindmapNodeActions = () => {
       left: placement.x,
       top: placement.y,
       '--drawnix-node-action-size': `${placement.size}px`,
-      '--drawnix-node-action-scale': placement.size / NODE_ACTION_SIZE,
+      '--drawnix-node-action-gap': `${placement.gap}px`,
+      '--drawnix-node-action-icon': `${
+        (placement.size * NODE_ACTION_ICON_RATIO) / NODE_ACTION_SIZE_RATIO
+      }px`,
+      '--drawnix-node-action-hit-top': `${placement.hit.top}px`,
+      '--drawnix-node-action-hit-bottom': `${placement.hit.bottom}px`,
+      '--drawnix-node-action-hit-outer': `${placement.hit.outer}px`,
       '--drawnix-node-accent': rect.accent,
       '--drawnix-node-accent-text': getAccentTextColor(rect.accent),
     } as React.CSSProperties;
@@ -437,6 +487,9 @@ export const MindmapNodeActions = () => {
           )}
           data-leaving-node-id={rect.id}
           data-side={placement.side}
+          data-icons={
+            placement.size >= NODE_ACTION_ICON_MIN_SIZE ? 'shown' : 'hidden'
+          }
           aria-hidden="true"
           style={style}
         >
@@ -463,6 +516,9 @@ export const MindmapNodeActions = () => {
         )}
         data-node-id={rect.id}
         data-side={placement.side}
+        data-icons={
+          placement.size >= NODE_ACTION_ICON_MIN_SIZE ? 'shown' : 'hidden'
+        }
         style={style}
         onPointerDown={(event) => event.stopPropagation()}
         onKeyDown={onBarKeyDown}

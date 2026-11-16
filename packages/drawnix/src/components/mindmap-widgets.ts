@@ -22,7 +22,12 @@ import {
   toScreenPointFromHostPoint,
   Transforms,
 } from '@plait/core';
-import { MindElement, NodeSpace, type PlaitMindBoard } from '@plait/mind';
+import {
+  getDefaultFontSizeForMindElement,
+  MindElement,
+  NodeSpace,
+  type PlaitMindBoard,
+} from '@plait/mind';
 import { Node } from 'slate';
 import { getAnkiCards } from '../anki-cards';
 import type { DrawnixState } from '../hooks/use-drawnix';
@@ -202,8 +207,27 @@ export interface MindNodeRect {
   /** Top and bottom of the node's text and image, which buttons must not cover. */
   contentTop: number;
   contentBottom: number;
+  /** Size of the node's text on screen, in pixels: buttons stay below it. */
+  fontSize: number;
   /** The node's stroke (or branch) color, for its buttons and dot. */
   accent: string;
+}
+
+/**
+ * Font size of a node's text, for sizing what sits on it: the smallest that
+ * can show. The default (14, or 18 on the root) is what Drawnix renders,
+ * since its text leaves ignore `font-size` marks; Plait still sizes the node
+ * box from them. A run with a smaller mark counts too, so the result stays
+ * at or under the text if marks are rendered one day.
+ */
+export function getNodeFontSize(element: MindElement): number {
+  let smallest: number = getDefaultFontSizeForMindElement(element);
+  for (const [text] of Node.texts(element.data.topic)) {
+    if (!text.text) continue;
+    const size = Number((text as { 'font-size'?: string })['font-size']);
+    if (size > 0) smallest = Math.min(smallest, size);
+  }
+  return smallest;
 }
 
 /**
@@ -259,6 +283,9 @@ export function useMindNodeRects(board: PlaitBoard): MindNodeRect[] {
           rect.y + rect.height,
         ]);
         const padding = getContentPadding(board, node);
+        // Board units to screen pixels (the zoom), from the node's own size.
+        const scale = rect.width ? (right - left) / rect.width : 1;
+        const fontSize = getNodeFontSize(node) * scale;
         const [, contentTop] = toEditorPoint([rect.x, rect.y + padding]);
         const [, contentBottom] = toEditorPoint([
           rect.x,
@@ -275,6 +302,7 @@ export function useMindNodeRects(board: PlaitBoard): MindNodeRect[] {
           cardCount: getAnkiCards(node).length,
           contentTop,
           contentBottom,
+          fontSize: Number.isFinite(fontSize) ? fontSize : 0,
           accent: getNodeAccent(board, node, canvas),
         });
       });

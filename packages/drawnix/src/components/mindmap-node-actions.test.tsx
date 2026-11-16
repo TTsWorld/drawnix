@@ -17,14 +17,16 @@ import { createMindmapDocument } from '../editor';
 import { MindmapAnkiCards } from './mindmap-anki-cards';
 import { MindmapNotes } from './mindmap-notes';
 import {
+  getNodeActionGap,
   getNodeActionSize,
   getNodeActionStrip,
   hitNodeRect,
   NODE_ACTION_EXIT_DURATION,
   NODE_ACTION_FIT_MIN_SIZE,
+  NODE_ACTION_HIT_SIZE,
   placeNodeActions,
 } from './mindmap-node-actions';
-import type { MindNodeRect } from './mindmap-widgets';
+import { getNodeFontSize, type MindNodeRect } from './mindmap-widgets';
 import {
   getAccentTextColor,
   getLuminance,
@@ -116,10 +118,9 @@ describe('node action buttons', () => {
     // Harness nodes overlap; the last listed one (the root) wins.
     const bar = screen.getByRole('toolbar', { name: '节点操作: Original' });
     expect(bar.style.left).toBe('150px');
-    // On the bottom border at 140 (the CSS moves it up by half its height),
-    // as far into the node as the root's 10px text padding allows: 9px of
-    // the 11px half, so the center is 2px below the border.
-    expect(bar.style.top).toBe('142px');
+    // Centered on the bottom border at 140 (the CSS moves it up by half its
+    // height): the root's 10px text padding holds half of a 16px button.
+    expect(bar.style.top).toBe('140px');
     // The buttons show the state; the dot gives way.
     expect(dot(id)).toBeNull();
 
@@ -512,6 +513,26 @@ describe('node action colors', () => {
     expect(accentOf(nodeActions('Original'))).toBe('#333333');
   });
 
+  it('sizes buttons from the node text: under its font size, icons 0.6 of it', async () => {
+    const { board, id, childId } = await setup();
+    await selectMindNode(board, id);
+    const root = nodeActions('Original');
+    // The root's 18px text: 16px buttons (0.9, rounded down), 4px apart,
+    // icons 2/3 of the button: about 0.6 of the text.
+    expect(root.style.getPropertyValue('--drawnix-node-action-size')).toBe(
+      '16px'
+    );
+    expect(
+      parseFloat(root.style.getPropertyValue('--drawnix-node-action-icon'))
+    ).toBeCloseTo((16 * 2) / 3);
+    expect(root.style.getPropertyValue('--drawnix-node-action-gap')).toBe('4px');
+    expect(root.dataset.icons).toBe('shown');
+    await selectMindNode(board, childId);
+    expect(
+      nodeActions('Child').style.getPropertyValue('--drawnix-node-action-size')
+    ).toBe('12px');
+  });
+
   it('puts dark text on light accents in the count badge', () => {
     expect(getAccentTextColor('#A287E0')).toBe('#ffffff');
     expect(getAccentTextColor('#333333')).toBe('#ffffff');
@@ -531,7 +552,9 @@ describe('node action colors', () => {
 });
 
 describe('node action geometry', () => {
-  const rect = (id: string, top: number): MindNodeRect => ({
+  // A 100 × 30 node with 14px text and roomy padding: more than half a
+  // button between text and border.
+  const rect = (id: string, top: number, fontSize = 14): MindNodeRect => ({
     id,
     topic: id,
     left: 0,
@@ -540,29 +563,89 @@ describe('node action geometry', () => {
     bottom: top + 30,
     hasNote: false,
     cardCount: 0,
-    // Roomy padding: more than half a button between text and border.
     contentTop: top + 12,
     contentBottom: top + 18,
+    fontSize,
     accent: '#A287E0',
   });
 
-  it('counts the press areas and the half of the row outside the node', () => {
+  it('never makes a button larger than the node text on screen', () => {
+    for (let font = 1; font <= 64; font += 0.25) {
+      expect(getNodeActionSize(font)).toBeLessThanOrEqual(font);
+    }
+    // 14px child text at 100%, 50% and 200%; the 18px root.
+    expect(getNodeActionSize(14)).toBe(12);
+    expect(getNodeActionSize(7)).toBe(6);
+    expect(getNodeActionSize(28)).toBe(25);
+    expect(getNodeActionSize(18)).toBe(16);
+    expect(getNodeActionGap(12)).toBe(3);
+    expect(getNodeActionGap(6)).toBe(2);
+  });
+
+  it('sizes the buttons from the node text, also after shrinking for neighbours', () => {
+    const big = rect('big', 0, 28);
+    expect(placeNodeActions(big, [big]).size).toBe(25);
+    const rects = [rect('a', 0), rect('b', 38), rect('c', 76)];
+    for (const placement of rects.map((r) => placeNodeActions(r, rects))) {
+      expect(placement.size).toBeLessThanOrEqual(14);
+    }
+  });
+
+  it('reads the smallest font size the node text can show', () => {
+    const node = (children: object[], isRoot = false) =>
+      ({
+        id: 'n',
+        type: isRoot ? 'mindmap' : 'mind_child',
+        isRoot,
+        data: { topic: { children: [{ type: 'paragraph', children }] } },
+        children: [],
+      }) as never;
+    expect(getNodeFontSize(node([{ text: 'a' }]))).toBe(14);
+    expect(getNodeFontSize(node([{ text: 'a' }], true))).toBe(18);
+    // Drawnix does not render larger marks; smaller ones count.
+    expect(getNodeFontSize(node([{ text: 'a', 'font-size': '28' }]))).toBe(14);
+    expect(
+      getNodeFontSize(
+        node([{ text: 'a', 'font-size': '28' }, { text: 'b', 'font-size': '12' }])
+      )
+    ).toBe(12);
+    expect(getNodeFontSize(node([{ text: '', 'font-size': '8' }]))).toBe(14);
+  });
+
+  it('gives each button a 24px press area that grows outwards where there is room', () => {
     const rects = [rect('a', 0)];
-    const placement = placeNodeActions(rects[0], rects, 22);
-    // 22px buttons with 3px press areas around them, centered on y = 30.
-    expect(getNodeActionStrip(placement)).toEqual({ top: 16, bottom: 44 });
-    expect(getNodeActionStrip(placeNodeActions(rects[0], rects, 18))).toEqual({
-      top: 18,
-      bottom: 42,
+    const placement = placeNodeActions(rects[0], rects);
+    // 12px buttons centered on y = 30; 5px toward the text (it stops 1px
+    // short of it), the other 7px below; 10.5px outwards beside a 1.5px
+    // half gap.
+    expect(placement).toEqual({
+      x: 50,
+      y: 30,
+      size: 12,
+      gap: 3,
+      side: 'below',
+      hit: { top: 5, bottom: 7, outer: 10.5 },
+    });
+    const { top, bottom } = getNodeActionStrip(placement);
+    expect(bottom - top).toBe(NODE_ACTION_HIT_SIZE);
+    expect(placement.size + placement.gap / 2 + placement.hit.outer).toBe(
+      NODE_ACTION_HIT_SIZE
+    );
+    // Text right under the border: the whole extra goes outwards.
+    const small = { ...rects[0], contentTop: 5, contentBottom: 25 };
+    expect(placeNodeActions(small, [small]).hit).toEqual({
+      top: 0,
+      bottom: 12,
+      outer: 10.5,
     });
   });
 
-  it('keeps a fixed screen size at and above 100% and shrinks to a minimum below', () => {
-    expect(getNodeActionSize(1)).toBe(22);
-    expect(getNodeActionSize(4)).toBe(22);
-    expect(getNodeActionSize(0.9)).toBe(20);
-    expect(getNodeActionSize(0.5)).toBe(18);
-    expect(getNodeActionSize(0.1)).toBe(18);
+  it('keeps press areas off a close neighbour', () => {
+    const rects = [rect('a', 0), rect('b', 42)];
+    // 12px below: room for the row (6 + 1 ring + 2), 4px of press area.
+    const placement = placeNodeActions(rects[0], rects);
+    expect(placement.side).toBe('below');
+    expect(placement.hit).toEqual({ top: 5, bottom: 4, outer: 10.5 });
   });
 
   it('counts the strip of the hovered node buttons only for that node', () => {
@@ -588,37 +671,30 @@ describe('node action geometry', () => {
       rect('down', 60 + 2 * gap),
     ];
     const mid = (rects: MindNodeRect[]) => rects[1];
-    // The row takes size / 2 + 3 (press area) + 2 (clearance) outside the node.
+    // The row takes size / 2 + 1 (ring) + 2 (clearance) outside the node.
 
-    it('centers them on the bottom edge when there is room', () => {
+    it('centers them on the bottom border when there is room', () => {
       const rects = stack(30);
-      expect(placeNodeActions(mid(rects), rects, 22)).toEqual({
+      expect(placeNodeActions(mid(rects), rects)).toMatchObject({
         x: 50,
         y: 90,
-        size: 22,
+        size: 12,
         side: 'below',
       });
-      // Exactly enough room: 11 + 3 + 2.
-      expect(placeNodeActions(mid(stack(16)), stack(16), 22).side).toBe('below');
-      // One pixel short on both sides: a size that fits, 2 × (15 - 3 - 2).
-      expect(placeNodeActions(mid(stack(15)), stack(15), 22).size).toBe(20);
+      // Exactly enough room: 6 + 1 + 2.
+      expect(placeNodeActions(mid(stack(9)), stack(9)).side).toBe('below');
+      // One pixel short on both sides: a size that fits, 2 × (8 - 3).
+      expect(placeNodeActions(mid(stack(8)), stack(8)).size).toBe(10);
       // The last node has nothing below.
-      expect(placeNodeActions(rects[2], stack(1), 22).side).toBe('below');
+      expect(placeNodeActions(stack(1)[2], stack(1)).side).toBe('below');
     });
 
-    it('moves them to the top edge when the node below is too close', () => {
-      const rects = [rect('mid', 0), rect('down', 40)];
-      const placement = placeNodeActions(rects[0], rects, 22);
-      expect(placement).toEqual({ x: 50, y: 0, size: 22, side: 'above' });
-    });
-
-    it('shrinks them to the larger gap when neither side has room', () => {
-      const rects = [rect('up', 0), rect('mid', 44), rect('down', 86)];
-      // 14px above, 12px below: 2 × (14 - 3 - 2) = 18 above.
-      expect(placeNodeActions(rects[1], rects, 22)).toEqual({
+    it('moves them to the top border when the node below is too close', () => {
+      const rects = [rect('mid', 0), rect('down', 38)];
+      expect(placeNodeActions(rects[0], rects)).toMatchObject({
         x: 50,
-        y: 44,
-        size: 18,
+        y: 0,
+        size: 12,
         side: 'above',
       });
     });
@@ -626,35 +702,28 @@ describe('node action geometry', () => {
     it('goes into a small node only as far as its text allows', () => {
       // 5px under the text: 4px into the node, keeping 1px off the text.
       const small = { ...rect('a', 0), contentTop: 5, contentBottom: 25 };
-      expect(placeNodeActions(small, [small], 22)).toEqual({
-        x: 50,
-        y: 30 + 11 - 4,
-        size: 22,
-        side: 'below',
-      });
-      // It then takes more room outside: 22 - 4 + 3 + 2 = 23.
-      const below = (gap: number) => ({ ...rect('b', 30 + gap) });
-      expect(placeNodeActions(small, [small, below(23)], 22).side).toBe(
-        'below'
-      );
-      const above = placeNodeActions(small, [small, below(22)], 22);
-      expect(above).toEqual({ x: 50, y: -(11 - 4), size: 22, side: 'above' });
+      expect(placeNodeActions(small, [small]).y).toBe(30 + 6 - 4);
       // Text touching the border: the buttons sit under it.
       const full = { ...small, contentTop: 0, contentBottom: 30 };
-      expect(placeNodeActions(full, [full], 22).y).toBe(41);
+      expect(placeNodeActions(full, [full]).y).toBe(36);
     });
 
     it('keeps a minimum size far zoomed out', () => {
-      const rects = stack(4);
-      const placement = placeNodeActions(mid(rects), rects, 18);
+      const rects = stack(2);
+      const placement = placeNodeActions(mid(rects), rects);
       expect(placement.size).toBe(NODE_ACTION_FIT_MIN_SIZE);
       expect(placement.side).toBe('below');
     });
 
     it('ignores nodes beside the buttons and the node itself', () => {
-      const beside = { ...rect('beside', 35), left: 200, right: 300 };
+      // The row with press areas spans x 26..74.
+      const beside = { ...rect('beside', 35), left: 75, right: 175 };
       const rects = [rect('mid', 0), beside];
-      expect(placeNodeActions(rects[0], rects, 22).side).toBe('below');
+      expect(placeNodeActions(rects[0], rects).side).toBe('below');
+      const touching = { ...beside, left: 73 };
+      expect(placeNodeActions(rects[0], [rects[0], touching]).side).toBe(
+        'above'
+      );
     });
   });
 });
