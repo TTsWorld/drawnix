@@ -4,14 +4,6 @@
   position: relative;
   outline: none;
 
-  .drawnix-note-badges {
-    @include widget.badge-layer;
-  }
-
-  .drawnix-note-badge {
-    @include widget.badge;
-  }
-
   .drawnix-note-panel {
     @include widget.panel;
 

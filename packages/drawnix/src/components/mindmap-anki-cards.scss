@@ -1,24 +1,6 @@
 @use './mindmap-widget' as widget;
 
 .drawnix {
-  .drawnix-anki-badges {
-    @include widget.badge-layer;
-  }
-
-  .drawnix-anki-badge {
-    @include widget.badge;
-    display: flex;
-    gap: 2px;
-    width: auto;
-    min-width: 24px;
-    padding: 4px 6px 4px 4px;
-    span {
-      font-size: 12px;
-      font-weight: 600;
-      line-height: 14px;
-    }
-  }
-
   .drawnix-anki-panel {
     @include widget.panel;
 

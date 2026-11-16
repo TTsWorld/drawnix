@@ -1,6 +1,7 @@
 import { Translations } from '../types';
 
 const ruTranslations: Translations = {
+  'nodeActions.label': "Действия с узлом",
   'notes.add': "Добавить заметку",
   'notes.open': "Открыть заметку",
   'notes.title': "Заметка узла",

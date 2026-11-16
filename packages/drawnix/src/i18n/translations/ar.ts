@@ -1,6 +1,7 @@
 import { Translations } from '../types';
 
 const arTranslations: Translations = {
+  'nodeActions.label': "إجراءات العقدة",
   'notes.add': "إضافة ملاحظة",
   'notes.open': "فتح الملاحظة",
   'notes.title': "ملاحظة العقدة",

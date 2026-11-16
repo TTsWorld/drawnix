@@ -1,5 +1,5 @@
 // Shared behavior of node widgets (notes, Anki cards): side panel events,
-// typing history, and badges next to nodes.
+// typing history, and node geometry for the node action bar.
 import {
   type Dispatch,
   type HTMLAttributes,
@@ -8,7 +8,6 @@ import {
   type SetStateAction,
   useContext,
   useEffect,
-  useRef,
   useState,
 } from 'react';
 import { BoardContext } from '@plait-board/react-board';
@@ -25,6 +24,7 @@ import {
 } from '@plait/core';
 import { MindElement } from '@plait/mind';
 import { Node } from 'slate';
+import { getAnkiCards } from '../anki-cards';
 import type { DrawnixState } from '../hooks/use-drawnix';
 
 export type MindWidget = 'note' | 'ankiCards';
@@ -105,7 +105,7 @@ export function closeMindWidgetPanel(
 }
 
 /**
- * Class of controls that open a widget panel (toolbar buttons, badges).
+ * Class of controls that open a widget panel (node action buttons).
  * Pressing one of the same editor does not count as an outside press: it
  * switches the panel.
  */
@@ -188,69 +188,74 @@ export function getMindWidgetPanelProps(
   };
 }
 
-export interface MindNodeBadge<T> {
+/** Screen rectangle of a visible node, relative to the editor element. */
+export interface MindNodeRect {
   id: string;
   topic: string;
-  x: number;
-  y: number;
-  value: T;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  hasNote: boolean;
+  cardCount: number;
 }
 
 /**
- * Positions badges at the top-right corner of visible nodes for which
- * `select` returns a value.
+ * Screen rectangles of all visible (not collapsed away) mind-map nodes, in
+ * document order, with what the node widgets need to show their state.
+ * Updates after every board change, including viewport moves and zoom.
  */
-export function useMindNodeBadges<T>(
-  board: PlaitBoard,
-  select: (element: MindElement) => T | undefined
-): MindNodeBadge<T>[] {
+export function useMindNodeRects(board: PlaitBoard): MindNodeRect[] {
   const boardVersion = useContext(BoardContext)?.v;
-  const [badges, setBadges] = useState<MindNodeBadge<T>[]>([]);
-  const selectRef = useRef(select);
-  selectRef.current = select;
+  const [rects, setRects] = useState<MindNodeRect[]>([]);
 
   // react-board advances its version after Plait refreshes layout references.
   // A local draft render can see new children before those references exist.
   useEffect(() => {
     const host = PlaitBoard.getBoardContainer(board).closest('.drawnix');
     if (!host) return;
-    const updatePositions = () => {
+    const update = () => {
       if (FLUSHING.get(board)) return;
       const bounds = host.getBoundingClientRect();
-      const result: MindNodeBadge<T>[] = [];
+      const toEditorPoint = (point: [number, number]) => {
+        const [x, y] = toScreenPointFromHostPoint(
+          board,
+          toHostPointFromViewBoxPoint(board, point)
+        );
+        return [x - bounds.left, y - bounds.top];
+      };
+      const result: MindNodeRect[] = [];
       findElements(board, {
         match: (element) => MindElement.isMindElement(board, element),
         recursion: (element) => !element.isCollapsed,
       }).forEach((element) => {
-        const mindElement = element as MindElement;
-        const value = selectRef.current(mindElement);
-        if (value === undefined) return;
-        const rect = getRectangleByElements(board, [mindElement], false);
-        const hostPoint = toHostPointFromViewBoxPoint(board, [
+        const node = element as MindElement;
+        const rect = getRectangleByElements(board, [node], false);
+        const [left, top] = toEditorPoint([rect.x, rect.y]);
+        const [right, bottom] = toEditorPoint([
           rect.x + rect.width,
-          rect.y,
+          rect.y + rect.height,
         ]);
-        const [screenX, screenY] = toScreenPointFromHostPoint(
-          board,
-          hostPoint
-        );
         result.push({
-          id: mindElement.id,
-          topic: Node.string(mindElement.data.topic),
-          x: screenX - bounds.left + 5,
-          y: screenY - bounds.top - 8,
-          value,
+          id: node.id,
+          topic: Node.string(node.data.topic),
+          left,
+          top,
+          right,
+          bottom,
+          hasNote: hasNote(node),
+          cardCount: getAnkiCards(node).length,
         });
       });
-      setBadges(result);
+      setRects(result);
     };
-    updatePositions();
-    const observer = new ResizeObserver(updatePositions);
+    update();
+    const observer = new ResizeObserver(update);
     observer.observe(host);
     return () => observer.disconnect();
   }, [board, boardVersion]);
 
-  return badges;
+  return rects;
 }
 
 export function hasNote(element: MindElement): boolean {

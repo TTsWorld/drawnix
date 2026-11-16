@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BoardTransforms, PlaitBoard, Transforms } from '@plait/core';
 import { createMindmapDocument } from '../editor';
 import { MindmapNotes } from './mindmap-notes';
-import { renderMindmapWidgets } from '../testing/mindmap-widget-harness';
+import {
+  nodeAction,
+  renderMindmapWidgets,
+  selectMindNode,
+} from '../testing/mindmap-widget-harness';
 
 // jsdom has no screen coordinates; keep Plait's geometry/reference lookup real.
 vi.mock('@plait/core', async (importOriginal) => ({
@@ -103,36 +107,34 @@ describe('mind-map note editing', () => {
     expect(screen.getByRole('textbox')).toBe(input);
   });
 
-  it('refreshes badges after adding, clearing and restoring the first note', async () => {
+  it('updates the note button after adding, clearing and restoring the first note', async () => {
     const { input, board } = await setup();
-    expect(
-      screen.queryByRole('button', { name: '打开备注: Original' })
-    ).toBeNull();
+    // The open panel's node keeps its action buttons.
+    const button = () => nodeAction('Original', /备注$/);
+    expect(button().getAttribute('aria-label')).toBe('添加备注');
+    expect(button().getAttribute('aria-expanded')).toBe('true');
+    expect(button().classList).not.toContain('drawnix-node-action--filled');
 
     fireEvent.input(input, { target: { value: 'First note' } });
     expect(input.value).toBe('First note');
     await act(async () => {
       await Promise.resolve();
     });
-    const badge = screen.getByRole('button', { name: '打开备注: Original' });
-    expect(badge.style.left).toBe('205px');
-    expect(badge.style.top).toBe('92px');
+    expect(button().getAttribute('aria-label')).toBe('打开备注');
+    expect(button().title).toBe('打开备注');
+    expect(button().classList).toContain('drawnix-node-action--filled');
 
     fireEvent.blur(input);
     fireEvent.focus(input);
     await act(async () => {
       fireEvent.input(input, { target: { value: '' } });
     });
-    expect(
-      screen.queryByRole('button', { name: '打开备注: Original' })
-    ).toBeNull();
+    expect(button().getAttribute('aria-label')).toBe('添加备注');
     await act(async () => {
       board.undo();
     });
     expect(input.value).toBe('First note');
-    expect(
-      screen.getByRole('button', { name: '打开备注: Original' })
-    ).toBeTruthy();
+    expect(button().getAttribute('aria-label')).toBe('打开备注');
   });
 
   it('shows loaded notes after the external document fitViewport notification', async () => {
@@ -154,9 +156,16 @@ describe('mind-map note editing', () => {
         true
       );
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: '打开备注: Loaded document' })
-    );
+    const loadedId = loaded.elements[0].id;
+    expect(
+      document.querySelector(
+        `.drawnix-node-content-dot[data-node-id="${loadedId}"]`
+      )
+    ).toBeTruthy();
+    await selectMindNode(board, loadedId);
+    await act(async () => {
+      fireEvent.click(nodeAction('Loaded document', '打开备注'));
+    });
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
       'Saved note'
     );
@@ -271,7 +280,10 @@ describe('mind-map note editing', () => {
         { type: 'set_note', nodeId: edited.id, note: 'Original note' },
       ]);
     });
-    fireEvent.click(screen.getByRole('button', { name: '打开备注: Editing' }));
+    await selectMindNode(board, edited.id);
+    await act(async () => {
+      fireEvent.click(nodeAction('Editing', '打开备注'));
+    });
     const input = screen.getByRole('textbox') as HTMLTextAreaElement;
 
     await act(async () => {
@@ -357,8 +369,9 @@ describe('mind-map note editing', () => {
     await act(async () => {
       fireEvent.input(input, { target: { value: 'Root edit' } });
     });
+    await selectMindNode(board, childId);
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '打开备注: Child' }));
+      fireEvent.click(nodeAction('Child', '打开备注'));
     });
     expect(input.value).toBe('Child note');
     await act(async () => {

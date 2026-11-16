@@ -1,10 +1,12 @@
 // Test harness for node widgets: a real Plait board with history and fake
 // layout references, rendered with react-board's asynchronous notification.
 import React, { useEffect, useState } from 'react';
-import { act, render } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { vi } from 'vitest';
 import { BoardContext } from '@plait-board/react-board';
 import {
+  addSelectedElement,
+  clearSelectedElement,
   createTestingBoard,
   fakeNodeWeakMap,
   findElements,
@@ -23,6 +25,7 @@ import {
 import { createDrawnixEditor } from '../editor';
 import { DrawnixContext, type DrawnixState } from '../hooks/use-drawnix';
 import { I18nProvider } from '../i18n';
+import { MindmapNodeActions } from '../components/mindmap-node-actions';
 
 /**
  * Callers must mock `toHostPointFromViewBoxPoint` and
@@ -89,7 +92,10 @@ export async function renderMindmapWidgets(
     return (
       <BoardContext.Provider value={context}>
         <DrawnixContext.Provider value={{ appState, setAppState }}>
-          <I18nProvider>{children}</I18nProvider>
+          <I18nProvider>
+            <MindmapNodeActions />
+            {children}
+          </I18nProvider>
         </DrawnixContext.Provider>
       </BoardContext.Provider>
     );
@@ -100,3 +106,25 @@ export async function renderMindmapWidgets(
   });
   return { board, editor, id, appState: state };
 }
+
+/** Selects one node, which shows its action buttons, as a click on it would. */
+export async function selectMindNode(board: PlaitBoard, id: string) {
+  await act(async () => {
+    const element = findElements(board, {
+      match: (value) => value.id === id,
+      recursion: () => true,
+    })[0];
+    clearSelectedElement(board);
+    addSelectedElement(board, element);
+    // react-board renders again after a selection change.
+    board.afterChange();
+  });
+}
+
+/** The action bar of the node with this topic. */
+export const nodeActions = (topic: string) =>
+  screen.getByRole('toolbar', { name: `节点操作: ${topic}` });
+
+/** A button in the action bar of the node with this topic. */
+export const nodeAction = (topic: string, name: string | RegExp) =>
+  within(nodeActions(topic)).getByRole('button', { name });

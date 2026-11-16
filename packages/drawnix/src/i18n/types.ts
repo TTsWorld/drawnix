@@ -5,6 +5,7 @@ export type Language = 'zh' | 'en' | 'ru' | 'ar' | 'vi';
 
 // Define translation keys and their corresponding values
 export interface Translations {
+  'nodeActions.label': string;
   'notes.add': string;
   'notes.open': string;
   'notes.title': string;

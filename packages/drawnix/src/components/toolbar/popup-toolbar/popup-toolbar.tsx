@@ -44,8 +44,6 @@ import { Freehand } from '../../../plugins/freehand/type';
 import { PopupLinkButton } from './link-button';
 import { getPopupToolbarPlacement } from './popup-toolbar-placement';
 import { ArrowMarkButton } from './arrow-mark-button';
-import { MindmapNoteButton } from '../../mindmap-notes';
-import { MindmapAnkiCardButton } from '../../mindmap-anki-cards';
 
 export const PopupToolbar = () => {
   const board = useBoard();
@@ -184,8 +182,6 @@ export const PopupToolbar = () => {
           style={floatingStyles}
         >
           <Stack.Row gap={1}>
-            <MindmapNoteButton />
-            <MindmapAnkiCardButton />
             {state.hasFontColor && (
               <PopupFontColorButton
                 board={board}

@@ -1,0 +1,94 @@
+@use './mindmap-widget' as widget;
+
+.drawnix {
+  .drawnix-node-actions-layer {
+    @include widget.overlay-layer;
+  }
+
+  // Centered on the node's bottom border like the reference, or its top border
+  // when a neighbour is too close (placeNodeActions); a fixed screen size.
+  .drawnix-node-actions {
+    position: absolute;
+    display: flex;
+    gap: 4px;
+    transform: translateX(-50%);
+    pointer-events: auto;
+  }
+
+  .drawnix-node-action {
+    $size: var(--drawnix-node-action-size, 22px);
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: $size;
+    height: $size;
+    padding: 0;
+    color: var(--color-primary);
+    background: var(--color-surface-lowest);
+    border: 1.5px solid var(--color-primary);
+    border-radius: 50%;
+    box-shadow: 0 1px 3px #0000001f;
+    cursor: pointer;
+    svg {
+      width: 62%;
+      height: 62%;
+    }
+    &:hover {
+      background: var(--color-primary-light);
+    }
+    &:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+    // The node has content of this kind.
+    &--filled {
+      color: #fff;
+      background: var(--color-primary-darker);
+      border-color: var(--color-primary-darker);
+      &:hover {
+        background: var(--color-primary-darkest);
+      }
+    }
+    // Its panel is open; pressing again closes it.
+    &--open {
+      box-shadow: 0 0 0 3px var(--color-primary-light);
+    }
+  }
+
+  // On the corner away from the node, so it never reaches the node's text.
+  .drawnix-node-action__count {
+    // 14px on a 22px button, smaller with the button.
+    $height: calc(var(--drawnix-node-action-size, 22px) * 0.64);
+    position: absolute;
+    bottom: calc(#{$height} / -2 + 2px);
+    right: calc(#{$height} / -2 - 1px);
+    min-width: $height;
+    height: $height;
+    padding: 0 2px;
+    box-sizing: border-box;
+    font-size: calc(var(--drawnix-node-action-size, 22px) * 0.45);
+    font-weight: 600;
+    line-height: calc(#{$height} - 2px);
+    text-align: center;
+    color: #fff;
+    background: var(--color-primary-darkest);
+    border: 1px solid var(--color-surface-lowest);
+    border-radius: calc(#{$height} / 2);
+    [data-side='above'] & {
+      top: calc(#{$height} / -2 + 2px);
+      bottom: auto;
+    }
+  }
+
+  // Resting hint that a node has a note or cards: a dot on the top-right corner.
+  .drawnix-node-content-dot {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: var(--color-primary);
+    border: 1.5px solid var(--color-surface-lowest);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+}

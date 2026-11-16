@@ -15,7 +15,11 @@ import {
 } from './mindmap-anki-cards';
 import type { AnkiImageCodec } from '../anki-card-images';
 import { MindmapNotes } from './mindmap-notes';
-import { renderMindmapWidgets } from '../testing/mindmap-widget-harness';
+import {
+  nodeAction,
+  renderMindmapWidgets,
+  selectMindNode,
+} from '../testing/mindmap-widget-harness';
 import { MIND_WIDGET_OPENER_CLASS_NAME } from './mindmap-widgets';
 
 // jsdom has no screen coordinates; keep Plait's geometry/reference lookup real.
@@ -119,9 +123,7 @@ describe('mind-map Anki cards', () => {
       { id: 'c1', front: 'Q', back: '' },
     ]);
     await act(async () => {
-      fireEvent.click(
-        screen.getByRole('button', { name: '打开 Anki 卡片: Original (1)' })
-      );
+      fireEvent.click(nodeAction('Original', '打开 Anki 卡片 (1)'));
     });
     expect(field('卡片 1 正面').value).toBe('Q');
     expect(screen.queryByDisplayValue('111')).toBeNull();
@@ -267,13 +269,13 @@ describe('mind-map Anki cards', () => {
     expect(stored).toEqual([{ id: 'c1', front: 'Q2', back: 'A', extra: 1 }]);
   });
 
-  it('shows the card count next to the note badge and opens the panel from it', async () => {
+  it('shows the card count on the node button and switches panels from the node buttons', async () => {
     const { editor, id, board } = await setup({ open: false });
     expect(screen.queryByRole('complementary')).toBeNull();
     await act(async () => {
       editor.updateMindmap([{ type: 'set_note', nodeId: id, note: 'n' }]);
     });
-    // Cards written by another edit (host, undo) also produce badges.
+    // Cards written by another edit (host, undo) also update the button.
     await act(async () => {
       PlaitHistoryBoard.withNewBatch(board, () => {
         Transforms.setNode(
@@ -288,18 +290,13 @@ describe('mind-map Anki cards', () => {
         );
       });
     });
-    const badge = screen.getByRole('button', {
-      name: '打开 Anki 卡片: Original (2)',
-    });
-    expect(badge.textContent).toBe('2');
-    const noteBadge = screen.getByRole('button', {
-      name: '打开备注: Original',
-    });
-    expect(Number.parseFloat(badge.style.left)).toBe(
-      Number.parseFloat(noteBadge.style.left) + 28
-    );
+    await selectMindNode(board, id);
+    const cards = nodeAction('Original', '打开 Anki 卡片 (2)');
+    expect(cards.textContent).toBe('2');
+    expect(cards.title).toBe('打开 Anki 卡片 (2)');
+    const note = nodeAction('Original', '打开备注');
     await act(async () => {
-      fireEvent.click(badge);
+      fireEvent.click(cards);
     });
     expect(
       screen.getByRole('complementary', { name: 'Anki 卡片' })
@@ -308,7 +305,7 @@ describe('mind-map Anki cards', () => {
 
     // Notes and cards share the side panel position; one replaces the other.
     await act(async () => {
-      fireEvent.click(noteBadge);
+      fireEvent.click(note);
     });
     expect(
       screen.queryByRole('complementary', { name: 'Anki 卡片' })
@@ -317,11 +314,16 @@ describe('mind-map Anki cards', () => {
       screen.getByRole('complementary', { name: '节点备注' })
     ).toBeTruthy();
     await act(async () => {
-      fireEvent.click(badge);
+      fireEvent.click(nodeAction('Original', '打开 Anki 卡片 (2)'));
     });
     expect(
       screen.queryByRole('complementary', { name: '节点备注' })
     ).toBeNull();
+    // A second press on the open panel's button closes it.
+    await act(async () => {
+      fireEvent.click(nodeAction('Original', '打开 Anki 卡片 (2)'));
+    });
+    expect(screen.queryByRole('complementary')).toBeNull();
   });
 
   it.each(['copy', 'cut', 'paste', 'keydown'])(
@@ -419,9 +421,7 @@ describe('mind-map Anki cards', () => {
         note: 'n',
         cards: [{ id: 'c1', front: 'Q', back: 'A' }],
       });
-      const noteBadge = screen.getByRole('button', {
-        name: '打开备注: Original',
-      });
+      const noteBadge = nodeAction('Original', '打开备注');
       await pressOn(noteBadge);
       expect(
         screen.getByRole('complementary', { name: 'Anki 卡片' })
@@ -455,17 +455,16 @@ describe('mind-map Anki cards', () => {
   });
 
   it('closes with Escape and when the node is deleted', async () => {
-    const { board } = await setup({
+    const { board, id } = await setup({
       cards: [{ id: 'c1', front: 'Q', back: 'A' }],
     });
     await act(async () => {
       fireEvent.keyDown(field('卡片 1 正面'), { key: 'Escape' });
     });
     expect(screen.queryByRole('complementary')).toBeNull();
+    await selectMindNode(board, id);
     await act(async () => {
-      fireEvent.click(
-        screen.getByRole('button', { name: '打开 Anki 卡片: Original (1)' })
-      );
+      fireEvent.click(nodeAction('Original', '打开 Anki 卡片 (1)'));
     });
     expect(screen.getByRole('complementary')).toBeTruthy();
     await act(async () => {
