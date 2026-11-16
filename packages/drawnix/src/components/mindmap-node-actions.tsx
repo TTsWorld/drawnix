@@ -26,15 +26,18 @@ import {
 import './mindmap-node-actions.scss';
 
 // The buttons are a secondary way into a node; its text is the content. So
-// they are sized from the node's text on screen, never larger than one line
-// of it, and grow and shrink with zoom and font size.
+// they are sized from the node's text on screen, never larger than one
+// character of it, and grow and shrink with zoom and font size.
 /**
- * Button diameter, as a share of the node's font size: under one line, and
- * small enough that both buttons stay well within a two-character node.
+ * Button diameter, as a share of the node's font size: one character, as
+ * tall as the text and no taller.
  */
-export const NODE_ACTION_SIZE_RATIO = 0.9;
-/** Icon size, as a share of the node's font size. */
-export const NODE_ACTION_ICON_RATIO = 0.6;
+export const NODE_ACTION_SIZE_RATIO = 1;
+/**
+ * Icon size, as a share of the button (so of the font size too): large
+ * enough at 100% (10.5px on 14px text) to tell the two icons apart.
+ */
+export const NODE_ACTION_ICON_RATIO = 0.75;
 /** Space between the two buttons, as a share of the button diameter. */
 export const NODE_ACTION_GAP_RATIO = 0.25;
 /** Below this diameter an icon is unreadable: the buttons show as plain dots. */
@@ -454,7 +457,7 @@ export const MindmapNodeActions = () => {
       '--drawnix-node-action-size': `${placement.size}px`,
       '--drawnix-node-action-gap': `${placement.gap}px`,
       '--drawnix-node-action-icon': `${
-        (placement.size * NODE_ACTION_ICON_RATIO) / NODE_ACTION_SIZE_RATIO
+        placement.size * NODE_ACTION_ICON_RATIO
       }px`,
       '--drawnix-node-action-hit-top': `${placement.hit.top}px`,
       '--drawnix-node-action-hit-bottom': `${placement.hit.bottom}px`,

@@ -4,22 +4,39 @@ export const createIcon = (svg: React.ReactNode) => {
   return svg;
 };
 
-// Note and Anki card buttons on mind-map nodes. Shapes from Lucide
-// (https://lucide.dev, ISC License, Copyright (c) Lucide Contributors):
-// "sticky-note" and "gallery-vertical-end". The button styles draw their
-// strokes at 1.5 screen pixels.
+// Note and Anki card buttons on mind-map nodes. They show at about 10px on
+// 100% zoom, so they differ in outline, not detail: lines of text for the
+// note, a stack of two cards for the cards. Both stay within a circle of
+// radius 11 around the center, so the round button never clips them. The
+// button styles set the stroke width in screen pixels.
 export const NoteIcon = createIcon(
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z" />
-    <path d="M15 3v4a2 2 0 0 0 2 2h4" />
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M4 5h16" />
+    <path d="M4 12h16" />
+    <path d="M4 19h9" />
   </svg>
 );
 
 export const AnkiCardIcon = createIcon(
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M7 2h10" />
-    <path d="M5 6h14" />
-    <rect width="18" height="12" x="3" y="10" rx="2" />
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="3.25" y="9.5" width="13" height="9.5" rx="2" />
+    <path d="M7.75 9.5V7a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v5.5a2 2 0 0 1-2 2h-2.5" />
   </svg>
 );
 
@@ -548,10 +565,9 @@ export const LinkIcon = createIcon(
   </svg>
 );
 
-
 export const ArrowIcon = createIcon(
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-    <g  stroke="none">
+    <g stroke="none">
       <path d="M8.44521878,4.21103025 C8.58299906,3.97171622 8.8886944,3.88940684 9.12800843,4.02718711 L15.242109,7.54725833 C15.3194119,7.59176394 15.3834015,7.65613893 15.4274422,7.73370766 C15.5637831,7.97384463 15.4796398,8.27904026 15.2395028,8.41538118 L9.12748155,11.8855614 C9.0176214,11.947936 8.88822223,11.9664118 8.76529593,11.9372749 C8.4965984,11.8735862 8.33040588,11.604134 8.39409456,11.3354364 L9.018,8.69941945 L1.5,8.7 C1.22385763,8.7 1,8.47614237 1,8.2 L1,8 C1,7.72385763 1.22385763,7.5 1.5,7.5 L9.075,7.49941945 L8.39165922,4.57430951 C8.3700078,4.48168206 8.37536432,4.38547957 8.40609313,4.29679626 Z"></path>
     </g>
   </svg>

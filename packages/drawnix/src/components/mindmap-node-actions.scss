@@ -17,8 +17,8 @@
 
   // Centered on the node's bottom border (or its top border when a neighbour
   // is too close, see placeNodeActions). Sizes come from the node's text:
-  // --drawnix-node-action-size is 0.9 of its font size on screen and the
-  // icon 0.6 of it; the gap is a share of the button.
+  // --drawnix-node-action-size is its font size on screen (rounded down) and
+  // the icon 0.75 of it; the gap is a share of the button.
   .drawnix-node-actions {
     $accent: var(--drawnix-node-accent, var(--color-primary));
     $canvas: var(--drawnix-canvas, #fff);
@@ -78,9 +78,11 @@
         right: calc(-1px - var(--drawnix-node-action-hit-outer, 0px));
       }
       svg {
-        width: var(--drawnix-node-action-icon, 9px);
-        height: var(--drawnix-node-action-icon, 9px);
-        stroke-width: max(1px, calc(#{$size} / 14));
+        width: var(--drawnix-node-action-icon, 10.5px);
+        height: var(--drawnix-node-action-icon, 10.5px);
+        // 1.5px on a 14px button (100%): thick enough to read at that size,
+        // still about the weight of the text's own strokes.
+        stroke-width: max(1px, calc(#{$size} * 3 / 28));
         * {
           vector-effect: non-scaling-stroke;
         }

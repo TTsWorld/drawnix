@@ -24,6 +24,7 @@ import {
   NODE_ACTION_EXIT_DURATION,
   NODE_ACTION_FIT_MIN_SIZE,
   NODE_ACTION_HIT_SIZE,
+  NODE_ACTION_ICON_MIN_SIZE,
   placeNodeActions,
 } from './mindmap-node-actions';
 import { getNodeFontSize, type MindNodeRect } from './mindmap-widgets';
@@ -510,26 +511,28 @@ describe('node action colors', () => {
     expect(accentOf(nodeActions('Original'))).toBe('#333333');
   });
 
-  it('sizes buttons from the node text: under its font size, icons 0.6 of it', async () => {
+  it('sizes buttons from the node text: its font size, icons 0.75 of it', async () => {
     const { board, id, childId } = await setup();
     await selectMindNode(board, id);
     const root = nodeActions('Original');
-    // The root's 18px text: 16px buttons (0.9, rounded down), 4px apart,
-    // icons 2/3 of the button: about 0.6 of the text.
+    // The root's 18px text: 18px buttons, 5px apart, 13.5px icons.
     expect(root.style.getPropertyValue('--drawnix-node-action-size')).toBe(
-      '16px'
+      '18px'
     );
-    expect(
-      parseFloat(root.style.getPropertyValue('--drawnix-node-action-icon'))
-    ).toBeCloseTo((16 * 2) / 3);
+    expect(root.style.getPropertyValue('--drawnix-node-action-icon')).toBe(
+      '13.5px'
+    );
     expect(root.style.getPropertyValue('--drawnix-node-action-gap')).toBe(
-      '4px'
+      '5px'
     );
     expect(root.dataset.icons).toBe('shown');
     await selectMindNode(board, childId);
     expect(
       nodeActions('Child').style.getPropertyValue('--drawnix-node-action-size')
-    ).toBe('12px');
+    ).toBe('14px');
+    expect(
+      nodeActions('Child').style.getPropertyValue('--drawnix-node-action-icon')
+    ).toBe('10.5px');
   });
 
   it('measures hex colors with or without alpha and padding', () => {
@@ -562,18 +565,24 @@ describe('node action geometry', () => {
     for (let font = 1; font <= 64; font += 0.25) {
       expect(getNodeActionSize(font)).toBeLessThanOrEqual(font);
     }
-    // 14px child text at 100%, 50% and 200%; the 18px root.
-    expect(getNodeActionSize(14)).toBe(12);
-    expect(getNodeActionSize(7)).toBe(6);
-    expect(getNodeActionSize(28)).toBe(25);
-    expect(getNodeActionSize(18)).toBe(16);
-    expect(getNodeActionGap(12)).toBe(3);
-    expect(getNodeActionGap(6)).toBe(2);
+    // 14px child text at 100%, 50% and 200%; the 18px root; 75% zoom.
+    expect(getNodeActionSize(14)).toBe(14);
+    expect(getNodeActionSize(7)).toBe(7);
+    expect(getNodeActionSize(28)).toBe(28);
+    expect(getNodeActionSize(18)).toBe(18);
+    expect(getNodeActionSize(10.5)).toBe(10);
+    // Dots, not icons, below 9px: at 50% a 14px child shows a dot.
+    expect(getNodeActionSize(7)).toBeLessThan(NODE_ACTION_ICON_MIN_SIZE);
+    expect(getNodeActionSize(14)).toBeGreaterThanOrEqual(
+      NODE_ACTION_ICON_MIN_SIZE
+    );
+    expect(getNodeActionGap(14)).toBe(4);
+    expect(getNodeActionGap(7)).toBe(2);
   });
 
   it('sizes the buttons from the node text, also after shrinking for neighbours', () => {
     const big = rect('big', 0, 28);
-    expect(placeNodeActions(big, [big]).size).toBe(25);
+    expect(placeNodeActions(big, [big]).size).toBe(28);
     const rects = [rect('a', 0), rect('b', 38), rect('c', 76)];
     for (const placement of rects.map((r) => placeNodeActions(r, rects))) {
       expect(placement.size).toBeLessThanOrEqual(14);
@@ -607,16 +616,15 @@ describe('node action geometry', () => {
   it('gives each button a 24px press area that grows outwards where there is room', () => {
     const rects = [rect('a', 0)];
     const placement = placeNodeActions(rects[0], rects);
-    // 12px buttons centered on y = 30; 5px toward the text (it stops 1px
-    // short of it), the other 7px below; 10.5px outwards beside a 1.5px
-    // half gap.
+    // 14px buttons centered on y = 30; 4px toward the text (it stops 1px
+    // short of it), the other 6px below; 8px outwards beside a 2px half gap.
     expect(placement).toEqual({
       x: 50,
       y: 30,
-      size: 12,
-      gap: 3,
+      size: 14,
+      gap: 4,
       side: 'below',
-      hit: { top: 5, bottom: 7, outer: 10.5 },
+      hit: { top: 4, bottom: 6, outer: 8 },
     });
     const { top, bottom } = getNodeActionStrip(placement);
     expect(bottom - top).toBe(NODE_ACTION_HIT_SIZE);
@@ -627,17 +635,17 @@ describe('node action geometry', () => {
     const small = { ...rects[0], contentTop: 5, contentBottom: 25 };
     expect(placeNodeActions(small, [small]).hit).toEqual({
       top: 0,
-      bottom: 12,
-      outer: 10.5,
+      bottom: 10,
+      outer: 8,
     });
   });
 
   it('keeps press areas off a close neighbour', () => {
     const rects = [rect('a', 0), rect('b', 42)];
-    // 12px below: room for the row (6 + 1 ring + 2), 4px of press area.
+    // 12px below: room for the row (7 + 1 ring + 2), 3px of press area.
     const placement = placeNodeActions(rects[0], rects);
     expect(placement.side).toBe('below');
-    expect(placement.hit).toEqual({ top: 5, bottom: 4, outer: 10.5 });
+    expect(placement.hit).toEqual({ top: 4, bottom: 3, outer: 8 });
   });
 
   it('counts the strip of the hovered node buttons only for that node', () => {
@@ -672,13 +680,16 @@ describe('node action geometry', () => {
       expect(placeNodeActions(mid(rects), rects)).toMatchObject({
         x: 50,
         y: 90,
-        size: 12,
+        size: 14,
         side: 'below',
       });
-      // Exactly enough room: 6 + 1 + 2.
-      expect(placeNodeActions(mid(stack(9)), stack(9)).side).toBe('below');
-      // One pixel short on both sides: a size that fits, 2 × (8 - 3).
-      expect(placeNodeActions(mid(stack(8)), stack(8)).size).toBe(10);
+      // Exactly enough room: 7 + 1 + 2.
+      expect(placeNodeActions(mid(stack(10)), stack(10))).toMatchObject({
+        side: 'below',
+        size: 14,
+      });
+      // One pixel short on both sides: a size that fits, 2 × (9 - 3).
+      expect(placeNodeActions(mid(stack(9)), stack(9)).size).toBe(12);
       // The last node has nothing below.
       expect(placeNodeActions(stack(1)[2], stack(1)).side).toBe('below');
     });
@@ -688,7 +699,7 @@ describe('node action geometry', () => {
       expect(placeNodeActions(rects[0], rects)).toMatchObject({
         x: 50,
         y: 0,
-        size: 12,
+        size: 14,
         side: 'above',
       });
     });
@@ -696,20 +707,21 @@ describe('node action geometry', () => {
     it('goes into a small node only as far as its text allows', () => {
       // 5px under the text: 4px into the node, keeping 1px off the text.
       const small = { ...rect('a', 0), contentTop: 5, contentBottom: 25 };
-      expect(placeNodeActions(small, [small]).y).toBe(30 + 6 - 4);
+      expect(placeNodeActions(small, [small]).y).toBe(30 + 7 - 4);
       // Text touching the border: the buttons sit under it.
       const full = { ...small, contentTop: 0, contentBottom: 30 };
-      expect(placeNodeActions(full, [full]).y).toBe(36);
+      expect(placeNodeActions(full, [full]).y).toBe(37);
     });
 
     it('places them the same with or without content: nothing sticks out', () => {
-      // 32px buttons (36px text): only the 1px ring counts, 16 + 1 + 2 = 19.
+      // 36px buttons (36px text), half in the node: only the 1px ring
+      // counts past the circle, 18 + 1 + 2 = 21.
       const big = { ...rect('a', 0, 36), contentTop: 0, contentBottom: 0 };
       const full = { ...big, hasNote: true, hasCards: true };
       const below = (gap: number) => rect('b', 30 + gap);
       for (const node of [big, full]) {
-        expect(placeNodeActions(node, [node, below(19)]).side).toBe('below');
-        expect(placeNodeActions(node, [node, below(18)]).side).toBe('above');
+        expect(placeNodeActions(node, [node, below(21)]).side).toBe('below');
+        expect(placeNodeActions(node, [node, below(20)]).side).toBe('above');
       }
     });
 
