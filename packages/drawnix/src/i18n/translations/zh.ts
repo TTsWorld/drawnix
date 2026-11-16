@@ -37,6 +37,7 @@ const zhTranslations: Translations = {
   'anki.imagesAdding': "正在处理图片…",
   'anki.imagesAdded': "已添加图片",
   'anki.imageTargetGone': "图片未添加：目标卡片已被删除",
+  'anki.imageDocumentSwitched': "图片未添加：文档已切换",
 
   // Toolbar items
   'toolbar.hand': '手形工具 — H',

@@ -25,6 +25,11 @@ import {
 } from './anki-cards';
 import { createDrawnixEditor, parseDrawnixDocument } from './editor';
 import { withAnkiCards } from './plugins/with-anki-cards';
+import {
+  getDocumentGeneration,
+  syncDocumentSwap,
+  withDocumentSwap,
+} from './plugins/with-document-swap';
 
 const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve));
 
@@ -532,6 +537,7 @@ describe('cut, paste, undo and paste again', () => {
       });
     };
     withAnkiCards(board);
+    withDocumentSwap(board);
     const cut = () => {
       const fragment = board.buildFragment(
         null,
@@ -664,6 +670,58 @@ describe('cut, paste, undo and paste again', () => {
     const c = documentWithCard('c');
     c.paste(cut);
     expect(shared(b.ids(), c.ids())).toEqual([]);
+  });
+
+  describe('when the host swaps the document on the same board', () => {
+    /** What react-board's Wrapper does for a new `value`: no operation. */
+    const swap = (board: PlaitBoard, elements: PlaitElement[]) => {
+      board.children = elements;
+    };
+
+    it('renews the IDs of a cut from the previous document', () => {
+      const a = documentWithCard();
+      const cut = a.cut();
+      const b = documentWithCard('b');
+      swap(a.board, b.board.children);
+      a.paste(cut);
+      expect(a.ids()).toHaveLength(2);
+      expect(a.ids()).not.toContain('m1');
+    });
+
+    it("clears the history, so undo never applies the previous document's steps", () => {
+      const a = documentWithCard();
+      a.edit('edited');
+      const b = documentWithCard('b');
+      const swapped = b.board.children;
+      swap(a.board, swapped);
+      a.board.undo();
+      expect(a.board.children).toBe(swapped);
+      expect(a.board.history).toEqual({ undos: [], redos: [] });
+      a.board.redo();
+      expect(a.board.children).toBe(swapped);
+    });
+
+    it('advances the document generation once per swap', () => {
+      const a = documentWithCard();
+      const start = getDocumentGeneration(a.board);
+      a.edit('edited');
+      expect(getDocumentGeneration(a.board)).toBe(start);
+      swap(a.board, documentWithCard('b').board.children);
+      expect(getDocumentGeneration(a.board)).toBe(start + 1);
+      expect(getDocumentGeneration(a.board)).toBe(start + 1);
+    });
+
+    it('repairs duplicate IDs in the new document without waiting for an operation', async () => {
+      const a = documentWithCard();
+      const duplicated = documentWithCard('d');
+      setCards(duplicated.board, [0, 0], [card('d')]);
+      swap(a.board, duplicated.board.children);
+      expect(syncDocumentSwap(a.board)).toBe(true);
+      await flush();
+      expect(a.ids()).toHaveLength(2);
+      expect(new Set(a.ids()).size).toBe(2);
+      expect(a.board.history.undos).toHaveLength(0);
+    });
   });
 
   describe('when localStorage cannot be written', () => {

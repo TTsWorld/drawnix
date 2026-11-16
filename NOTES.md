@@ -123,6 +123,17 @@ let editor: DrawnixEditor;
 />;
 ```
 
+**Switching documents.** Passing a different document as `value` (or opening a
+file from the menu) replaces the board's elements without an operation. The
+editor detects this and treats it as a new document: undo/redo history is
+cleared, so undo never applies the previous document's steps to the new one;
+cuts made in the previous document paste as copies (new card IDs); card images
+still being processed for the previous document are dropped with a notice; and
+duplicate card IDs in the new document are repaired. Hosts that echo the
+document back through `value` after each change must pass the same array they
+got from `onValueChange`, not a copy, or every change counts as a new document.
+Remounting `<Drawnix>` (a React `key` per document) also works.
+
 The host owns storage, save scheduling, conflict detection, permissions, and
 any Agent transport. This package has no Stair, Electron, Project, or session
 dependency. Use `onViewportChange` and `onThemeChange` to persist presentation

@@ -32,6 +32,7 @@ import {
   type AnkiImageCodec,
 } from '../anki-card-images';
 import { serializeDrawnixBoard } from '../editor';
+import { getDocumentGeneration } from '../plugins/with-document-swap';
 import { useDrawnix } from '../hooks/use-drawnix';
 import { useI18n, type Translations } from '../i18n';
 import { ImageIcon, PlusIcon } from './icons';
@@ -400,7 +401,13 @@ export const MindmapAnkiCards = () => {
    */
   const addImages = (files: File[]) => {
     if (!node || !current || !files.length) return;
-    const target = { nodeId: node.id, cardId: current.id, side };
+    const target = {
+      nodeId: node.id,
+      cardId: current.id,
+      side,
+      // A swapped-in document can hold the same node and card IDs.
+      generation: getDocumentGeneration(board),
+    };
     const notify = (value: Notice | null) =>
       setNotice(value && { ...value, cardId: target.cardId });
     setPending((count) => count + 1);
@@ -416,6 +423,10 @@ export const MindmapAnkiCards = () => {
         }
       }
       let warning: Notice | null = null;
+      if (getDocumentGeneration(board) !== target.generation) {
+        setNotice({ kind: 'error', text: t('anki.imageDocumentSwitched') });
+        return;
+      }
       const exists = getAnkiCards(findMindElement(board, target.nodeId)).some(
         (card) => card.id === target.cardId
       );

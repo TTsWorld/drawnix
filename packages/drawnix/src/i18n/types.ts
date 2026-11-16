@@ -41,6 +41,7 @@ export interface Translations {
   'anki.imagesAdding': string;
   'anki.imagesAdded': string;
   'anki.imageTargetGone': string;
+  'anki.imageDocumentSwitched': string;
 
   // Toolbar items
   'toolbar.hand': string;

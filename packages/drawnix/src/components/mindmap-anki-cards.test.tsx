@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  fakeNodeWeakMap,
   PlaitBoard,
   PlaitHistoryBoard,
   type PlaitElement,
@@ -21,6 +22,7 @@ import {
   selectMindNode,
 } from '../testing/mindmap-widget-harness';
 import { MIND_WIDGET_OPENER_CLASS_NAME } from './mindmap-widgets';
+import { withDocumentSwap } from '../plugins/with-document-swap';
 
 // jsdom has no screen coordinates; keep Plait's geometry/reference lookup real.
 vi.mock('@plait/core', async (importOriginal) => ({
@@ -1040,6 +1042,27 @@ describe('Anki card panel layout and images', () => {
       await settle(() => release());
       expect(editor.readAnkiCards()[0].cards[0].frontImages).toHaveLength(2);
       expect(screen.getByRole('status').textContent).toBe('已添加图片');
+    });
+
+    it('drops the images when the host swaps in a document with the same card', async () => {
+      const { editor, board } = await twoCards();
+      withDocumentSwap(board);
+      const input = screen.getByTestId('drawnix-anki-image-input');
+      await settle(() =>
+        fireEvent.change(input, { target: { files: [png()] } })
+      );
+      // Another copy of the same document (same node and card IDs), passed
+      // in as a new `value`: react-board replaces the children directly.
+      board.children = JSON.parse(JSON.stringify(board.children));
+      fakeNodeWeakMap(board);
+      const swapped = board.children;
+      await settle(() => release());
+      expect(board.children).toBe(swapped);
+      expect(editor.readAnkiCards()[0].cards[0].frontImages).toBeUndefined();
+      expect(board.history.undos).toHaveLength(0);
+      expect(screen.getByRole('alert').textContent).toBe(
+        '图片未添加：文档已切换'
+      );
     });
 
     it('reports instead of claiming success when the card was deleted meanwhile', async () => {

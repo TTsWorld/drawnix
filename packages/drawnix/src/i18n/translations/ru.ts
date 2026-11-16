@@ -37,6 +37,7 @@ const ruTranslations: Translations = {
   'anki.imagesAdding': "Обработка изображений…",
   'anki.imagesAdded': "Изображение добавлено",
   'anki.imageTargetGone': "Изображение не добавлено: карточка удалена",
+  'anki.imageDocumentSwitched': "Изображение не добавлено: документ был заменён",
 
   // Toolbar items
   'toolbar.hand': 'Рука — H',

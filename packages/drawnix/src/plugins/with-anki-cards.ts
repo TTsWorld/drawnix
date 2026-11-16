@@ -11,6 +11,7 @@ import {
   markAnkiCardsCut,
   prepareAnkiCardsForPaste,
 } from '../anki-cards';
+import { onDocumentSwap } from './with-document-swap';
 
 /**
  * Keeps card IDs unique and stable:
@@ -20,8 +21,9 @@ import {
  *   as long as the step that removed the cut source is in this board's undo
  *   history (the source is gone) and the IDs are not on the board. Pasting a
  *   cut into another board, another window or after a reload renews the
- *   IDs like a copy. A cut's IDs therefore never leave the document they
- *   were made in, so no undo, redo or older history step of either document
+ *   IDs like a copy. So does pasting after the host swapped the document
+ *   on this board (withDocumentSwap clears the history). A cut's IDs
+ *   therefore never leave the document they were made in, so no undo, redo or older history step of either document
  *   can make two documents share an Anki GUID, and nothing has to be shared
  *   between boards or stored.
  * - Duplicate card IDs in the document (older data, upstream Drawnix,
@@ -111,6 +113,13 @@ export const withAnkiCards = (board: PlaitBoard) => {
   };
   // Documents passed in at creation have no change notification.
   scheduleRepair();
+  // A swapped-in document may come without any operation to notify about.
+  // Swapping also clears the history, which forgets the cuts made in the
+  // previous document (see withDocumentSwap).
+  onDocumentSwap(board, () => {
+    pendingCut = null;
+    scheduleRepair();
+  });
   return board;
 };
 

@@ -37,6 +37,7 @@ const arTranslations: Translations = {
   'anki.imagesAdding': "جارٍ معالجة الصور…",
   'anki.imagesAdded': "تمت إضافة الصورة",
   'anki.imageTargetGone': "لم تتم إضافة الصورة: تم حذف البطاقة",
+  'anki.imageDocumentSwitched': "لم تتم إضافة الصورة: تم تبديل المستند",
 
     // Toolbar items
     "toolbar.hand": "اليد — H",

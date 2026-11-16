@@ -37,6 +37,7 @@ const enTranslations: Translations = {
   'anki.imagesAdding': "Processing images…",
   'anki.imagesAdded': "Image added",
   'anki.imageTargetGone': "Image not added: the card was deleted",
+  'anki.imageDocumentSwitched': "Image not added: the document was switched",
 
   // Toolbar items
   'toolbar.hand': 'Hand — H',

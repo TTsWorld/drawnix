@@ -45,6 +45,10 @@ import { MindmapNotes } from './components/mindmap-notes';
 import { MindmapAnkiCards } from './components/mindmap-anki-cards';
 import { MindmapNodeActions } from './components/mindmap-node-actions';
 import { withAnkiCards } from './plugins/with-anki-cards';
+import {
+  syncDocumentSwap,
+  withDocumentSwap,
+} from './plugins/with-document-swap';
 
 export type DrawnixProps = {
   value: PlaitElement[];
@@ -116,9 +120,18 @@ export const Drawnix: React.FC<DrawnixProps> = ({
     buildPencilPlugin(updateAppState),
     buildTextLinkPlugin(updateAppState),
     withAnkiCards,
+    // Last: checks for a swapped document before every other plugin.
+    withDocumentSwap,
   ];
 
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Wrapper (a child, so its effect ran first) replaces board.children when
+  // `value` is a different document. Clear the history now, not only at the
+  // next operation.
+  useEffect(() => {
+    if (board) syncDocumentSwap(board);
+  }, [board, value]);
 
   return (
     <I18nProvider>

@@ -37,6 +37,7 @@ const viTranslations: Translations = {
   'anki.imagesAdding': "Đang xử lý ảnh…",
   'anki.imagesAdded': "Đã thêm ảnh",
   'anki.imageTargetGone': "Chưa thêm ảnh: thẻ đã bị xóa",
+  'anki.imageDocumentSwitched': "Chưa thêm ảnh: tài liệu đã được chuyển",
 
     // Toolbar items
     'toolbar.hand': 'Kéo — H',
