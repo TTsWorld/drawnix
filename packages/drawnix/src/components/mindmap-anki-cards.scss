@@ -149,7 +149,8 @@
         font-weight: 600;
         color: var(--color-primary-darkest);
         &::before {
-          content: '✓';
+          // Empty alt text: aria-checked already says it is selected.
+          content: '✓' #{'/'} '';
           position: absolute;
           left: 10px;
         }
