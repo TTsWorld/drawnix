@@ -66,7 +66,9 @@ GIF and WebP are accepted. Every image is redrawn and re-encoded (PNG, then
 JPEG; JPEG first for JPEG files), scaled to at most 1280 px and 300 KiB. This
 drops metadata such as EXIF camera data and GPS location, which would
 otherwise be exported with the card. GIFs within those limits are kept
-unchanged so they stay animated; larger GIFs become still images. An
+unchanged so they stay animated; larger GIFs become still images. Images are
+decoded at their original size before scaling, so a very large photo briefly
+needs memory for its full pixels. An
 image is not added if the document would exceed 7.5 MiB (hosts such as Stair
 reject documents above 8 MiB); the panel shows an error, and a warning above
 6 MiB. The same limit applies to the whole editor: a paste or duplicate that
@@ -90,7 +92,11 @@ and paste in the same document moves cards and keeps their IDs, as long as the
 cut is still in that document's undo history and the IDs are not already on
 the board; pasting the same cut again renews them. Pasting a cut into another
 document (another board, window or tab, or after a reload) renews the IDs like
-a copy. A card ID therefore never leaves the document it was made in, so undo
+a copy. Deleting the pasted node does not end the move: the cut source is
+still gone, so pasting again brings the same ID back, like undoing the delete.
+The ID is renewed only when the source is back, the cut has left the undo
+history, the document was swapped, or a card with that ID is already on the
+board. A card ID therefore never leaves the document it was made in, so undo
 and redo in either document can never make two documents share a GUID. Nothing
 is stored outside the document for this.
 
@@ -99,7 +105,11 @@ from older versions or upstream Drawnix, which copy cards unchanged) are
 repaired after loading, after the host replaces the document, and after every
 change: the first card in document tree order keeps its ID, later ones get an
 ID derived from the node ID and the duplicated ID, so the same data is always
-repaired the same way. The repair is written to the document without an undo
+repaired the same way. Tree order is the only evidence available, so if a copy
+was pasted *before* the original, the copy keeps the ID and the original gets
+the derived one; Anki then updates the copy's note and its review history
+follows the copy. Hosts that care can compare `readAnkiCards()` with their
+last export to see what changed. The repair is written to the document without an undo
 step. `readAnkiCards()` and `getMindmapAnkiCards()` apply the same rule, so
 their IDs are unique even for documents that were never opened. Pasting keeps card fields this
 version does not know. Deleting the last card removes the field. `front` and `back` are plain multiline text; exporters must escape
@@ -177,7 +187,10 @@ emoji transforms rebuild `data`, so notes must not be stored there. Keep
 notes and cards with their nodes during copy, move, undo, and serialization.
 Upstream Drawnix does not display these extensions, and duplicating a node
 there copies card IDs unchanged; edits made with other versions must
-be checked for preservation before relying on round trips.
+be checked for preservation before relying on round trips. Cutting nodes also
+adds an `ankiCardsCut` marker to those elements so a paste in this editor can
+tell a cut from a copy; it is removed when pasting here, but pasting into
+upstream Drawnix or another app keeps the (harmless) marker in that file.
 
 ## Verify and package
 
