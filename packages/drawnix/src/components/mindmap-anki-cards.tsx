@@ -405,7 +405,7 @@ export const MindmapAnkiCards = () => {
       setNotice(value && { ...value, cardId: target.cardId });
     setPending((count) => count + 1);
     notify({ kind: 'status', text: t('anki.imagesAdding') });
-    imageQueue.current = imageQueue.current.then(async () => {
+    const process = async () => {
       const added: MindmapAnkiCardMedia[] = [];
       let failure: Notice | null = null;
       for (const file of files) {
@@ -421,7 +421,6 @@ export const MindmapAnkiCards = () => {
       );
       if (added.length && !exists) {
         // Shown with whichever card is open, since the target is gone.
-        setPending((count) => count - 1);
         setNotice({ kind: 'error', text: t('anki.imageTargetGone') });
         return;
       }
@@ -455,7 +454,6 @@ export const MindmapAnkiCards = () => {
           added.length = 0;
         }
       }
-      setPending((count) => count - 1);
       notify(
         failure ??
           warning ??
@@ -463,7 +461,15 @@ export const MindmapAnkiCards = () => {
             ? { kind: 'status', text: t('anki.imagesAdded') }
             : null)
       );
-    });
+    };
+    // A failure outside the per-file checks must not leave the panel busy or
+    // stop later batches: the queue always settles.
+    imageQueue.current = imageQueue.current
+      .then(process)
+      .catch((error) =>
+        notify({ kind: 'error', text: imageErrorText(error, t) })
+      )
+      .finally(() => setPending((count) => count - 1));
   };
 
   const removeImage = (imageId: string) => {
@@ -571,10 +577,7 @@ export const MindmapAnkiCards = () => {
                 card.front,
                 t('anki.emptyFront')
               )}`,
-              deleteLabel: t('anki.deleteCard').replace(
-                '{n}',
-                String(i + 1)
-              ),
+              deleteLabel: t('anki.deleteCard').replace('{n}', String(i + 1)),
             }))}
             currentIndex={index}
             selectLabel={t('anki.select')}
@@ -625,9 +628,7 @@ export const MindmapAnkiCards = () => {
               event.preventDefault();
               const next = side === 'front' ? 'back' : 'front';
               select(current.id, next);
-              setPendingFocus(
-                `[id="${fieldId(current.id, `tab-${next}`)}"]`
-              );
+              setPendingFocus(`[id="${fieldId(current.id, `tab-${next}`)}"]`);
             }}
           >
             {SIDES.map((value) => {
@@ -734,9 +735,7 @@ export const MindmapAnkiCards = () => {
               (!notice.cardId || notice.cardId === current.id) &&
               renderNotice(notice)}
           </div>
-          <label htmlFor={fieldId(current.id, 'tags')}>
-            {t('anki.tags')}
-          </label>
+          <label htmlFor={fieldId(current.id, 'tags')}>{t('anki.tags')}</label>
           <AnkiCardField
             key={`${current.id}-tags`}
             id={fieldId(current.id, 'tags')}

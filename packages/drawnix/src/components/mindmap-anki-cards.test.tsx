@@ -875,6 +875,27 @@ describe('Anki card panel layout and images', () => {
     expect(screen.getByRole('status').textContent).toBe('已添加图片');
   });
 
+  it('recovers when a batch fails unexpectedly, and keeps processing later ones', async () => {
+    const { editor, board } = await twoCards();
+    const input = screen.getByTestId('drawnix-anki-image-input');
+    const theme = board.theme;
+    // Reading the document size fails once (outside the per-file checks).
+    board.theme = {
+      ...theme,
+      toJSON: () => {
+        throw new Error('Synthetic failure');
+      },
+    } as typeof theme;
+    await settle(() => fireEvent.change(input, { target: { files: [png()] } }));
+    board.theme = theme;
+    const add = screen.getByRole('button', { name: '添加图片' });
+    expect((add as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole('alert').textContent).toBe('无法读取这张图片');
+    await settle(() => fireEvent.change(input, { target: { files: [png()] } }));
+    expect(editor.readAnkiCards()[0].cards[0].frontImages).toHaveLength(1);
+    expect(screen.getByRole('status').textContent).toBe('已添加图片');
+  });
+
   it('takes pasted and dropped image files without reaching the board', async () => {
     const { editor } = await twoCards();
     const boardListener = vi.fn();
