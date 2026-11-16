@@ -194,10 +194,13 @@ export const MindmapAnkiCards = () => {
   } | null>(null);
   const lastIndex = useRef<{ nodeId?: string; index: number }>({ index: 0 });
   const [notice, setNotice] = useState<Notice | null>(null);
-  // Number of image batches being processed; batches run one after another.
-  const [pending, setPending] = useState(0);
-  const busy = pending > 0;
+  // Cards with image batches being processed, once per batch; batches run
+  // one after another.
+  const [pendingCards, setPendingCards] = useState<string[]>([]);
   const imageQueue = useRef<Promise<void>>(Promise.resolve());
+  // Advances when the panel closes or shows another node; batches started
+  // before are dropped, so no undo step lands after the user moved on.
+  const imageEpoch = useRef(0);
   const [dragging, setDragging] = useState(false);
   const [preview, setPreview] = useState<{
     url: string;
@@ -218,6 +221,7 @@ export const MindmapAnkiCards = () => {
   }
   lastIndex.current = { nodeId: node?.id, index };
   const current: MindmapAnkiCard | undefined = cards[index];
+  const busy = !!current && pendingCards.includes(current.id);
   const side: MindmapAnkiCardSide = ownSelection?.side ?? 'front';
   const cardName = `${t('anki.card')} ${index + 1}`;
 
@@ -229,6 +233,7 @@ export const MindmapAnkiCards = () => {
   };
 
   useEffect(() => {
+    imageEpoch.current++;
     lastInputOperation.current = null;
     setPendingFocus(null);
     setNotice(null);
@@ -417,14 +422,18 @@ export const MindmapAnkiCards = () => {
       // A swapped-in document can hold the same node and card IDs.
       generation: getDocumentGeneration(board),
     };
-    const notify = (value: Notice | null) =>
-      setNotice(value && { ...value, cardId: target.cardId });
-    setPending((count) => count + 1);
+    const epoch = imageEpoch.current;
+    const cancelled = () => imageEpoch.current !== epoch;
+    const notify = (value: Notice | null) => {
+      if (!cancelled()) setNotice(value && { ...value, cardId: target.cardId });
+    };
+    setPendingCards((cards) => [...cards, target.cardId]);
     notify({ kind: 'status', text: t('anki.imagesAdding') });
     const process = async () => {
       const added: MindmapAnkiCardMedia[] = [];
       let failure: Notice | null = null;
       for (const file of files) {
+        if (cancelled()) return;
         try {
           added.push(await createAnkiCardImage(file, imageCodec));
         } catch (error) {
@@ -432,6 +441,7 @@ export const MindmapAnkiCards = () => {
         }
       }
       let warning: Notice | null = null;
+      if (cancelled()) return;
       if (getDocumentGeneration(board) !== target.generation) {
         setNotice({ kind: 'error', text: t('anki.imageDocumentSwitched') });
         return;
@@ -489,7 +499,12 @@ export const MindmapAnkiCards = () => {
       .catch((error) =>
         notify({ kind: 'error', text: imageErrorText(error, t) })
       )
-      .finally(() => setPending((count) => count - 1));
+      .finally(() =>
+        setPendingCards((cards) => {
+          const at = cards.indexOf(target.cardId);
+          return at < 0 ? cards : [...cards.slice(0, at), ...cards.slice(at + 1)];
+        })
+      );
   };
 
   const removeImage = (imageId: string) => {

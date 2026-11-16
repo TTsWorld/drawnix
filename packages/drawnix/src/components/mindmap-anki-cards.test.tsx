@@ -1100,6 +1100,39 @@ describe('Anki card panel layout and images', () => {
       );
     });
 
+    it('drops images still processing when the panel closes', async () => {
+      const { editor, board, appState } = await twoCards();
+      const undos = board.history.undos.length;
+      const input = screen.getByTestId('drawnix-anki-image-input');
+      await settle(() =>
+        fireEvent.change(input, { target: { files: [png(), png()] } })
+      );
+      await act(async () => {
+        fireEvent.keyDown(field('卡片 1 正面'), { key: 'Escape' });
+      });
+      expect(appState.current?.openAnkiCardsId).toBeNull();
+      await settle(() => release());
+      expect(editor.readAnkiCards()[0].cards[0].frontImages).toBeUndefined();
+      expect(board.history.undos).toHaveLength(undos);
+    });
+
+    it('keeps adding images on other cards while one card is processing', async () => {
+      await twoCards();
+      const add = () =>
+        screen.getByRole('button', { name: '添加图片' }) as HTMLButtonElement;
+      const input = screen.getByTestId('drawnix-anki-image-input');
+      await settle(() =>
+        fireEvent.change(input, { target: { files: [png()] } })
+      );
+      expect(add().disabled).toBe(true);
+      await chooseCard(/^卡片 2/);
+      expect(add().disabled).toBe(false);
+      await chooseCard(/^卡片 1/);
+      expect(add().disabled).toBe(true);
+      await settle(() => release());
+      expect(add().disabled).toBe(false);
+    });
+
     it('reports instead of claiming success when the card was deleted meanwhile', async () => {
       const { editor } = await twoCards();
       const input = screen.getByTestId('drawnix-anki-image-input');
