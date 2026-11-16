@@ -18,7 +18,7 @@
   // Centered on the node's bottom border (or its top border when a neighbour
   // is too close, see placeNodeActions). Sizes come from the node's text:
   // --drawnix-node-action-size is 0.9 of its font size on screen and the
-  // icon 0.6 of it; the gap and count badge are shares of the button.
+  // icon 0.6 of it; the gap is a share of the button.
   .drawnix-node-actions {
     $accent: var(--drawnix-node-accent, var(--color-primary));
     $canvas: var(--drawnix-canvas, #fff);
@@ -60,8 +60,7 @@
       // A thin ring in the canvas color cuts the node's border around it.
       box-shadow: 0 0 0 1px $canvas;
       cursor: pointer;
-      transition: background-color 0.12s, border-color 0.12s,
-        transform 0.08s;
+      transition: background-color 0.12s, border-color 0.12s, transform 0.08s;
       // Press area: up to 24px square, reaching outwards and away from the
       // text and neighbours (placeNodeActions); the two meet mid-gap.
       &::before {
@@ -123,36 +122,8 @@
       }
     }
     // Too small for a readable icon: plain dots, tinted when there is content.
-    &[data-icons='hidden'] svg,
-    &[data-icons='hidden'] .drawnix-node-action__count {
+    &[data-icons='hidden'] svg {
       display: none;
-    }
-
-    // On the corner away from the node, so it never reaches the node's text;
-    // its digits are about half the node's font size.
-    .drawnix-node-action__count {
-      $height: calc(#{$size} * 0.72);
-      position: absolute;
-      bottom: calc(#{$size} * -0.25);
-      right: calc(#{$size} * -0.3);
-      box-sizing: border-box;
-      min-width: $height;
-      height: $height;
-      padding: 0 calc(#{$size} * 0.16);
-      font-size: calc(#{$size} * 0.55);
-      font-weight: 600;
-      line-height: $height;
-      font-variant-numeric: tabular-nums;
-      text-align: center;
-      color: var(--drawnix-node-accent-text, #fff);
-      background: $accent;
-      box-shadow: 0 0 0 1px $canvas;
-      border-radius: calc(#{$height} / 2);
-      pointer-events: none;
-    }
-    &[data-side='above'] .drawnix-node-action__count {
-      top: calc(#{$size} * -0.25);
-      bottom: auto;
     }
   }
 

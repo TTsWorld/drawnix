@@ -203,7 +203,7 @@ export interface MindNodeRect {
   right: number;
   bottom: number;
   hasNote: boolean;
-  cardCount: number;
+  hasCards: boolean;
   /** Top and bottom of the node's text and image, which buttons must not cover. */
   contentTop: number;
   contentBottom: number;
@@ -299,7 +299,7 @@ export function useMindNodeRects(board: PlaitBoard): MindNodeRect[] {
           right,
           bottom,
           hasNote: hasNote(node),
-          cardCount: getAnkiCards(node).length,
+          hasCards: getAnkiCards(node).length > 0,
           contentTop,
           contentBottom,
           fontSize: Number.isFinite(fontSize) ? fontSize : 0,

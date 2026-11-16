@@ -123,7 +123,7 @@ describe('mind-map Anki cards', () => {
       { id: 'c1', front: 'Q', back: '' },
     ]);
     await act(async () => {
-      fireEvent.click(nodeAction('Original', '打开 Anki 卡片 (1)'));
+      fireEvent.click(nodeAction('Original', '打开 Anki 卡片'));
     });
     expect(field('卡片 1 正面').value).toBe('Q');
     expect(screen.queryByDisplayValue('111')).toBeNull();
@@ -291,9 +291,11 @@ describe('mind-map Anki cards', () => {
       });
     });
     await selectMindNode(board, id);
-    const cards = nodeAction('Original', '打开 Anki 卡片 (2)');
-    expect(cards.textContent).toBe('2');
-    expect(cards.title).toBe('打开 Anki 卡片 (2)');
+    const cards = nodeAction('Original', '打开 Anki 卡片');
+    // No count anywhere on the node: the fill says there are cards.
+    expect(cards.textContent).toBe('');
+    expect(cards.title).toBe('打开 Anki 卡片');
+    expect(cards.classList).toContain('drawnix-node-action--filled');
     const note = nodeAction('Original', '打开备注');
     await act(async () => {
       fireEvent.click(cards);
@@ -314,14 +316,14 @@ describe('mind-map Anki cards', () => {
       screen.getByRole('complementary', { name: '节点备注' })
     ).toBeTruthy();
     await act(async () => {
-      fireEvent.click(nodeAction('Original', '打开 Anki 卡片 (2)'));
+      fireEvent.click(nodeAction('Original', '打开 Anki 卡片'));
     });
     expect(
       screen.queryByRole('complementary', { name: '节点备注' })
     ).toBeNull();
     // A second press on the open panel's button closes it.
     await act(async () => {
-      fireEvent.click(nodeAction('Original', '打开 Anki 卡片 (2)'));
+      fireEvent.click(nodeAction('Original', '打开 Anki 卡片'));
     });
     expect(screen.queryByRole('complementary')).toBeNull();
   });
@@ -464,7 +466,7 @@ describe('mind-map Anki cards', () => {
     expect(screen.queryByRole('complementary')).toBeNull();
     await selectMindNode(board, id);
     await act(async () => {
-      fireEvent.click(nodeAction('Original', '打开 Anki 卡片 (1)'));
+      fireEvent.click(nodeAction('Original', '打开 Anki 卡片'));
     });
     expect(screen.getByRole('complementary')).toBeTruthy();
     await act(async () => {
@@ -713,7 +715,10 @@ describe('Anki card panel layout and images', () => {
       await deleteCard(1);
       expect(ids(editor)).toEqual(['c2', 'c3']);
       await act(async () => {
-        fireEvent.keyDown(screen.getByRole('menu'), { key: 'z', ctrlKey: true });
+        fireEvent.keyDown(screen.getByRole('menu'), {
+          key: 'z',
+          ctrlKey: true,
+        });
       });
       expect(ids(editor)).toEqual(['c1', 'c2', 'c3']);
       // The shown card is kept by ID, back in its old place.
@@ -775,7 +780,9 @@ describe('Anki card panel layout and images', () => {
         expect(deleteButton(n).getAttribute('title')).toBe(`删除卡片 ${n}`);
       }
       expect(
-        screen.getAllByRole('menuitemradio')[0].getAttribute('aria-keyshortcuts')
+        screen
+          .getAllByRole('menuitemradio')[0]
+          .getAttribute('aria-keyshortcuts')
       ).toBe('Delete Backspace');
     });
   });

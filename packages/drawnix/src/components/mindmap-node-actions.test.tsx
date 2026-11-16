@@ -27,11 +27,7 @@ import {
   placeNodeActions,
 } from './mindmap-node-actions';
 import { getNodeFontSize, type MindNodeRect } from './mindmap-widgets';
-import {
-  getAccentTextColor,
-  getLuminance,
-  NODE_ACCENT_DARK_TEXT,
-} from './mindmap-node-accent';
+import { getLuminance } from './mindmap-node-accent';
 import {
   nodeAction,
   nodeActions,
@@ -181,12 +177,13 @@ describe('node action buttons', () => {
     const { board, id, childId } = await setup();
     await selectMindNode(board, id);
     const note = nodeAction('Original', '打开备注');
-    const cards = nodeAction('Original', '打开 Anki 卡片 (2)');
+    const cards = nodeAction('Original', '打开 Anki 卡片');
     expect(note.classList).toContain('drawnix-node-action--filled');
     expect(cards.classList).toContain('drawnix-node-action--filled');
-    expect(
-      cards.querySelector('.drawnix-node-action__count')?.textContent
-    ).toBe('2');
+    // Presence only: no count on the button, in its name or its tooltip.
+    expect(cards.textContent).toBe('');
+    expect(cards.title).toBe('打开 Anki 卡片');
+    expect(cards.querySelector('.drawnix-node-action__count')).toBeNull();
     expect(note.getAttribute('aria-expanded')).toBe('false');
     expect(dot(id)).toBeNull();
 
@@ -196,7 +193,6 @@ describe('node action buttons', () => {
     );
     const empty = nodeAction('Child', '添加 Anki 卡片');
     expect(empty.title).toBe('添加 Anki 卡片');
-    expect(empty.querySelector('.drawnix-node-action__count')).toBeNull();
     // The root's buttons fade out, out of reach, before its dot comes back.
     const ghost = window.document.querySelector<HTMLElement>(
       `[data-leaving-node-id="${id}"]`
@@ -225,15 +221,15 @@ describe('node action buttons', () => {
     const { board, id, childId } = await setup();
     await selectMindNode(board, id);
     await act(async () => {
-      fireEvent.click(nodeAction('Original', '打开 Anki 卡片 (2)'));
+      fireEvent.click(nodeAction('Original', '打开 Anki 卡片'));
     });
     expect(
       screen.getByRole('complementary', { name: 'Anki 卡片' })
     ).toBeTruthy();
     expect(
-      nodeAction('Original', '打开 Anki 卡片 (2)').getAttribute('aria-expanded')
+      nodeAction('Original', '打开 Anki 卡片').getAttribute('aria-expanded')
     ).toBe('true');
-    expect(nodeAction('Original', '打开 Anki 卡片 (2)').classList).toContain(
+    expect(nodeAction('Original', '打开 Anki 卡片').classList).toContain(
       'drawnix-node-action--open'
     );
 
@@ -347,7 +343,7 @@ describe('node action buttons', () => {
       expect(window.document.activeElement).toBe(note);
       // One Tab stop for the row; arrows move inside it.
       expect(note.tabIndex).toBe(0);
-      expect(nodeAction('Original', '打开 Anki 卡片 (2)').tabIndex).toBe(-1);
+      expect(nodeAction('Original', '打开 Anki 卡片').tabIndex).toBe(-1);
     });
 
     it.each([
@@ -401,7 +397,7 @@ describe('node action buttons', () => {
     it('moves between buttons with arrows, activates them and returns to the board with Escape', async () => {
       const { host } = await focusedSetup();
       const note = nodeAction('Original', '打开备注');
-      const cards = nodeAction('Original', '打开 Anki 卡片 (2)');
+      const cards = nodeAction('Original', '打开 Anki 卡片');
       note.focus();
       fireEvent.keyDown(note, { key: 'ArrowRight' });
       expect(window.document.activeElement).toBe(cards);
@@ -422,7 +418,7 @@ describe('node action buttons', () => {
         screen.getByRole('complementary', { name: 'Anki 卡片' })
       ).toBeTruthy();
       await act(async () => {
-        fireEvent.click(nodeAction('Original', '打开 Anki 卡片 (2)'));
+        fireEvent.click(nodeAction('Original', '打开 Anki 卡片'));
       });
       expect(screen.queryByRole('complementary')).toBeNull();
 
@@ -489,9 +485,6 @@ describe('node action colors', () => {
     await selectMindNode(board, childId);
     // First branch color of the default theme.
     expect(accentOf(nodeActions('Child'))).toBe('#A287E0');
-    expect(
-      nodeActions('Child').style.getPropertyValue('--drawnix-node-accent-text')
-    ).toBe('#ffffff');
   });
 
   it('follows the theme, with a dark canvas on dark themes', async () => {
@@ -539,16 +532,6 @@ describe('node action colors', () => {
     ).toBe('12px');
   });
 
-  it('puts dark text on light accents in the count badge', () => {
-    expect(getAccentTextColor('#A287E0')).toBe('#ffffff');
-    expect(getAccentTextColor('#333333')).toBe('#ffffff');
-    // Yellow branch and the white root of dark themes.
-    expect(getAccentTextColor('#E0B75E')).toBe(NODE_ACCENT_DARK_TEXT);
-    expect(getAccentTextColor('#FFFFFF')).toBe(NODE_ACCENT_DARK_TEXT);
-    // Colors that cannot be measured keep the default.
-    expect(getAccentTextColor('rebeccapurple')).toBe('#ffffff');
-  });
-
   it('measures hex colors with or without alpha and padding', () => {
     expect(getLuminance('#fff')).toBe(1);
     expect(getLuminance('#00000080')).toBe(0);
@@ -568,7 +551,7 @@ describe('node action geometry', () => {
     right: 100,
     bottom: top + 30,
     hasNote: false,
-    cardCount: 0,
+    hasCards: false,
     contentTop: top + 12,
     contentBottom: top + 18,
     fontSize,
@@ -719,26 +702,15 @@ describe('node action geometry', () => {
       expect(placeNodeActions(full, [full]).y).toBe(36);
     });
 
-    it('keeps the count badge off the neighbour too (Codex review 10)', () => {
-      // 32px buttons (36px text, the root at 200%): the badge reaches
-      // 0.25 × 32 + 1 = 9px past the circle, so 16 + 9 + 2 = 27px below.
+    it('places them the same with or without content: nothing sticks out', () => {
+      // 32px buttons (36px text): only the 1px ring counts, 16 + 1 + 2 = 19.
       const big = { ...rect('a', 0, 36), contentTop: 0, contentBottom: 0 };
+      const full = { ...big, hasNote: true, hasCards: true };
       const below = (gap: number) => rect('b', 30 + gap);
-      const withCards = { ...big, cardCount: 2 };
-      expect(placeNodeActions(withCards, [withCards, below(27)]).side).toBe(
-        'below'
-      );
-      expect(placeNodeActions(withCards, [withCards, below(26)]).side).toBe(
-        'above'
-      );
-      // Without cards only the 1px ring counts: 16 + 1 + 2 = 19.
-      expect(placeNodeActions(big, [big, below(19)]).side).toBe('below');
-      // To the right, the badge reaches 0.3 × 32 + 1 = 10.6px past the row.
-      const right = { ...rect('r', 35), left: 50 + 32 + 4 + 10, right: 200 };
-      expect(placeNodeActions(withCards, [withCards, right]).side).toBe(
-        'above'
-      );
-      expect(placeNodeActions(big, [big, right]).side).toBe('below');
+      for (const node of [big, full]) {
+        expect(placeNodeActions(node, [node, below(19)]).side).toBe('below');
+        expect(placeNodeActions(node, [node, below(18)]).side).toBe('above');
+      }
     });
 
     it('keeps a minimum size far zoomed out', () => {

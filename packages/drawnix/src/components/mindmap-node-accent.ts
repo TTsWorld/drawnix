@@ -11,13 +11,9 @@ import {
 import { isNoColor, isTransparent, removeHexAlpha } from '../utils/color';
 
 const DEFAULT_CANVAS = '#ffffff';
-/** Text on a count badge whose accent is too light for white. */
-export const NODE_ACCENT_DARK_TEXT = '#1f2329';
 // Below this contrast against the canvas a color does not read as an accent
 // (the default root stroke #f5f5f5 on white is 1.09).
 const MIN_CANVAS_CONTRAST = 1.3;
-// White text on lighter accents (yellow, light theme roots) is unreadable.
-const MIN_WHITE_TEXT_CONTRAST = 2;
 
 /** Relative luminance of a #rgb / #rrggbb(aa) color, or null for others. */
 export function getLuminance(color: string): number | null {
@@ -94,13 +90,4 @@ export function getNodeAccent(
     }
   }
   return DEFAULT_COLOR;
-}
-
-/** White unless the accent is too light for it. */
-export function getAccentTextColor(accent: string) {
-  const luminance = getLuminance(accent);
-  if (luminance === null) return '#ffffff';
-  return contrast(luminance, 1) >= MIN_WHITE_TEXT_CONTRAST
-    ? '#ffffff'
-    : NODE_ACCENT_DARK_TEXT;
 }

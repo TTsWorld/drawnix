@@ -15,11 +15,7 @@ import classNames from 'classnames';
 import { useDrawnix } from '../hooks/use-drawnix';
 import { useI18n } from '../i18n';
 import { AnkiCardIcon, NoteIcon } from './icons';
-import {
-  getAccentTextColor,
-  getCanvasColor,
-  isDarkCanvas,
-} from './mindmap-node-accent';
+import { getCanvasColor, isDarkCanvas } from './mindmap-node-accent';
 import {
   MIND_WIDGET_OPENER_CLASS_NAME,
   type MindNodeRect,
@@ -49,13 +45,6 @@ export const NODE_ACTION_FIT_MIN_SIZE = 6;
 export const NODE_ACTION_HIT_SIZE = 24;
 /** The canvas-colored ring that cuts the node's border around each button. */
 const NODE_ACTION_RING = 1;
-/**
- * The count badge sticks out of the card button by these shares of its
- * diameter, away from the node and to the right (matches the stylesheet),
- * plus its 1px ring.
- */
-const NODE_ACTION_BADGE_OUT = 0.25;
-const NODE_ACTION_BADGE_RIGHT = 0.3;
 /** Room kept between the buttons (or their press areas) and a neighbour. */
 const NODE_ACTION_CLEARANCE = 2;
 /** Room kept between the buttons and the node's text inside the node. */
@@ -115,17 +104,11 @@ export function placeNodeActions(
   size = getNodeActionSize(rect.fontSize)
 ): NodeActionPlacement {
   const x = (rect.left + rect.right) / 2;
-  // The count badge shows on buttons large enough for icons.
-  const badge = (value: number) =>
-    rect.cardCount > 0 && value >= NODE_ACTION_ICON_MIN_SIZE;
   const startGap = getNodeActionGap(size);
   const halfWidth =
     size +
     startGap / 2 +
-    Math.max(
-      getOuterHitPad(size, startGap),
-      badge(size) ? size * NODE_ACTION_BADGE_RIGHT + NODE_ACTION_RING : 0
-    );
+    Math.max(getOuterHitPad(size, startGap), NODE_ACTION_RING);
   let below = Infinity;
   let above = Infinity;
   for (const other of rects) {
@@ -145,16 +128,9 @@ export function placeNodeActions(
   // How far a row of this size goes into the node, at most half of it.
   const overlap = (side: Side, value: number) =>
     Math.max(0, Math.min(value / 2, inside[side]));
-  // Height the visible row takes outside the node: ring, or the count badge
-  // on the far corner (Codex review 10), and clearance.
+  // Height the visible row takes outside the node: ring and clearance.
   const outside = (side: Side, value: number) =>
-    value -
-    overlap(side, value) +
-    Math.max(
-      NODE_ACTION_RING,
-      badge(value) ? value * NODE_ACTION_BADGE_OUT + NODE_ACTION_RING : 0
-    ) +
-    NODE_ACTION_CLEARANCE;
+    value - overlap(side, value) + NODE_ACTION_RING + NODE_ACTION_CLEARANCE;
   const place = (side: Side, value: number): NodeActionPlacement => {
     const into = overlap(side, value);
     const offset = value / 2 - into;
@@ -470,9 +446,8 @@ export const MindmapNodeActions = () => {
     const cardsOpen =
       !ghost && openWidget === 'ankiCards' && openId === rect.id;
     const noteLabel = t(rect.hasNote ? 'notes.open' : 'notes.add');
-    const cardsLabel = rect.cardCount
-      ? `${t('anki.open')} (${rect.cardCount})`
-      : t('anki.add');
+    // No count, here or on the button: the fill says whether there are cards.
+    const cardsLabel = t(rect.hasCards ? 'anki.open' : 'anki.add');
     const style = {
       left: placement.x,
       top: placement.y,
@@ -485,13 +460,7 @@ export const MindmapNodeActions = () => {
       '--drawnix-node-action-hit-bottom': `${placement.hit.bottom}px`,
       '--drawnix-node-action-hit-outer': `${placement.hit.outer}px`,
       '--drawnix-node-accent': rect.accent,
-      '--drawnix-node-accent-text': getAccentTextColor(rect.accent),
     } as React.CSSProperties;
-    const count = rect.cardCount > 0 && (
-      <span className="drawnix-node-action__count" aria-hidden="true">
-        {rect.cardCount > 99 ? '99+' : rect.cardCount}
-      </span>
-    );
     const buttonClass = (filled: boolean, open: boolean) =>
       classNames('drawnix-node-action', {
         [MIND_WIDGET_OPENER_CLASS_NAME]: !ghost,
@@ -517,9 +486,8 @@ export const MindmapNodeActions = () => {
           style={style}
         >
           <span className={buttonClass(rect.hasNote, false)}>{NoteIcon}</span>
-          <span className={buttonClass(rect.cardCount > 0, false)}>
+          <span className={buttonClass(rect.hasCards, false)}>
             {AnkiCardIcon}
-            {count}
           </span>
         </div>
       );
@@ -559,7 +527,7 @@ export const MindmapNodeActions = () => {
         </button>
         <button
           type="button"
-          className={buttonClass(rect.cardCount > 0, cardsOpen)}
+          className={buttonClass(rect.hasCards, cardsOpen)}
           data-widget="ankiCards"
           aria-label={cardsLabel}
           title={cardsLabel}
@@ -568,7 +536,6 @@ export const MindmapNodeActions = () => {
           onClick={() => toggle('ankiCards', rect.id)}
         >
           {AnkiCardIcon}
-          {count}
         </button>
       </div>
     );
@@ -583,7 +550,7 @@ export const MindmapNodeActions = () => {
       {rects.map((rect) => {
         if (active.has(rect.id)) return renderBar(rect, false);
         if (leaving.has(rect.id)) return renderBar(rect, true);
-        if (!rect.hasNote && !rect.cardCount) return null;
+        if (!rect.hasNote && !rect.hasCards) return null;
         // The pointer or selection is on the node: its buttons speak for it,
         // or will once the drag or text edit ends.
         if (
