@@ -2,6 +2,7 @@
 // document size budget. Images are stored inline as data URLs, so they count
 // toward the size of the saved document.
 import { createAnkiCardId, type MindmapAnkiCardMedia } from './anki-cards';
+import { stripImageMetadata } from './image-metadata';
 
 /** Longest edge of a stored card image, in pixels. */
 export const ANKI_IMAGE_MAX_EDGE = 1280;
@@ -17,11 +18,18 @@ export const DOCUMENT_SIZE_WARNING = 6 * 1024 * 1024;
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 export const ANKI_IMAGE_ACCEPT = ACCEPTED_TYPES.join(',');
 const SCALES = [ANKI_IMAGE_MAX_EDGE, 960, 640];
-const ENCODINGS: Array<[string, number | undefined]> = [
-  ['image/png', undefined],
+type Encoding = [type: string, quality: number | undefined];
+const JPEG_ENCODINGS: Encoding[] = [
   ['image/jpeg', 0.85],
   ['image/jpeg', 0.7],
   ['image/jpeg', 0.55],
+];
+const ENCODINGS: Encoding[] = [['image/png', undefined], ...JPEG_ENCODINGS];
+/** Formats that keep transparency: PNG, then lossy WebP with alpha. */
+const TRANSPARENT_ENCODINGS: Encoding[] = [
+  ['image/png', undefined],
+  ['image/webp', 0.9],
+  ['image/webp', 0.75],
 ];
 
 export type AnkiImageErrorCode =
@@ -54,6 +62,8 @@ export interface AnkiImageCodec {
     quality?: number
   ): Promise<Blob>;
   toDataUrl(blob: Blob): Promise<string>;
+  /** Whether any pixel is not fully opaque. Absent: treated as opaque. */
+  hasTransparency?(image: DecodedImage): boolean;
 }
 
 export const browserImageCodec: AnkiImageCodec = {
@@ -86,6 +96,26 @@ export const browserImageCodec: AnkiImageCodec = {
       )
     );
   },
+  hasTransparency(image) {
+    // At most the stored size: enough to tell, without a full-size buffer.
+    const { width, height } = fit(
+      image.width,
+      image.height,
+      ANKI_IMAGE_MAX_EDGE
+    );
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    // Unknown: keep transparency to be safe.
+    if (!context) return true;
+    context.drawImage(image.source, 0, 0, width, height);
+    const { data } = context.getImageData(0, 0, width, height);
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] < 255) return true;
+    }
+    return false;
+  },
   toDataUrl(blob) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -109,13 +139,21 @@ function fit(width: number, height: number, edge: number) {
 }
 
 /**
- * Turns a file into a card image. Every image except a small GIF is drawn and
- * re-encoded, which drops metadata such as EXIF (camera, GPS location) that
- * would otherwise be exported with the card; the decoder has applied the EXIF
- * orientation. Images are scaled to at most ANKI_IMAGE_MAX_EDGE and encoded
- * as PNG or JPEG (JPEG first for JPEG files) until they fit
- * ANKI_IMAGE_MAX_BYTES. Small GIFs are kept as they are, so they stay
- * animated. Throws AnkiImageError instead of failing silently.
+ * Turns a file into a card image without the metadata, such as EXIF (camera,
+ * GPS location), that would otherwise be exported with the card.
+ *
+ * - PNG and WebP files within ANKI_IMAGE_MAX_EDGE and ANKI_IMAGE_MAX_BYTES
+ *   keep their image data: metadata chunks are removed losslessly, so
+ *   transparency and animation (APNG, animated WebP) stay. One whose EXIF
+ *   rotates it is re-encoded instead, so it shows the way it did.
+ * - Small GIFs are kept as they are, so they stay animated.
+ * - Everything else is drawn and re-encoded (the decoder has applied the EXIF
+ *   orientation), scaled to at most ANKI_IMAGE_MAX_EDGE, until it fits
+ *   ANKI_IMAGE_MAX_BYTES: JPEG files as JPEG; images with transparency as
+ *   PNG or WebP at each size, and only as a last resort as JPEG on white;
+ *   other images as PNG, then JPEG.
+ *
+ * Throws AnkiImageError instead of failing silently.
  */
 export async function createAnkiCardImage(
   file: Blob,
@@ -133,31 +171,48 @@ export async function createAnkiCardImage(
   try {
     let blob: Blob | undefined;
     let size = { width: image.width, height: image.height };
-    if (
-      file.type === 'image/gif' &&
+    const withinLimits =
       Math.max(image.width, image.height) <= ANKI_IMAGE_MAX_EDGE &&
-      file.size <= ANKI_IMAGE_MAX_BYTES
-    ) {
+      file.size <= ANKI_IMAGE_MAX_BYTES;
+    if (withinLimits && file.type === 'image/gif') {
       blob = file;
+    } else if (
+      withinLimits &&
+      (file.type === 'image/png' || file.type === 'image/webp')
+    ) {
+      const stripped = stripImageMetadata(
+        new Uint8Array(await file.arrayBuffer()),
+        file.type
+      );
+      if (stripped?.orientation === 1) {
+        blob = new Blob([stripped.bytes], { type: file.type });
+      }
     }
-    const encodings: typeof ENCODINGS =
+    // Each pass tries every size, largest first.
+    const passes: Encoding[][] =
       file.type === 'image/jpeg'
-        ? [['image/jpeg', 0.92], ...ENCODINGS.filter(([t]) => t === 'image/jpeg')]
-        : ENCODINGS;
-    for (const edge of blob ? [] : SCALES) {
-      size = fit(image.width, image.height, edge);
-      for (const [type, quality] of encodings) {
-        const encoded = await codec.encode(
-          image,
-          size.width,
-          size.height,
-          type,
-          quality
-        );
-        if (encoded.size <= ANKI_IMAGE_MAX_BYTES) {
-          blob = encoded;
-          break;
+        ? [[['image/jpeg', 0.92], ...JPEG_ENCODINGS]]
+        : !blob && codec.hasTransparency?.(image)
+        ? [TRANSPARENT_ENCODINGS, JPEG_ENCODINGS]
+        : [ENCODINGS];
+    for (const encodings of blob ? [] : passes) {
+      for (const edge of SCALES) {
+        size = fit(image.width, image.height, edge);
+        for (const [type, quality] of encodings) {
+          const encoded = await codec.encode(
+            image,
+            size.width,
+            size.height,
+            type,
+            quality
+          );
+          // Browsers without a WebP encoder return PNG instead.
+          if (encoded.type === type && encoded.size <= ANKI_IMAGE_MAX_BYTES) {
+            blob = encoded;
+            break;
+          }
         }
+        if (blob) break;
       }
       if (blob) break;
     }

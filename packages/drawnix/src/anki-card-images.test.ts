@@ -30,7 +30,7 @@ function codec(
 }
 
 describe('card image compression', () => {
-  it('re-encodes small PNG, JPEG and WebP files, dropping EXIF and other metadata', async () => {
+  it('re-encodes small JPEG files, and PNG or WebP files it cannot parse, dropping EXIF', async () => {
     for (const type of ['image/png', 'image/jpeg', 'image/webp']) {
       const { value, encode } = codec(400, 300, () => 1);
       const image = await createAnkiCardImage(file(5000, type), value);
@@ -106,6 +106,203 @@ describe('card image compression', () => {
       )
     ).toBe('unreadable');
     expect(await code(createAnkiCardImage(file(1), huge))).toBe('too-large');
+  });
+});
+
+const ascii = (text: string) => Array.from(text, (c) => c.charCodeAt(0));
+const u32be = (n: number) => [
+  n >>> 24,
+  (n >>> 16) & 255,
+  (n >>> 8) & 255,
+  n & 255,
+];
+const u32le = (n: number) => u32be(n).reverse();
+/** A PNG chunk; the CRC is not checked when stripping. */
+const pngChunk = (type: string, data: number[] = [1, 2, 3]) => [
+  ...u32be(data.length),
+  ...ascii(type),
+  ...data,
+  0,
+  0,
+  0,
+  0,
+];
+const webpChunk = (type: string, data: number[]) => [
+  ...ascii(type),
+  ...u32le(data.length),
+  ...data,
+  ...(data.length % 2 ? [0] : []),
+];
+const webpFile = (chunks: number[][]) => {
+  const body = chunks.flat();
+  return [
+    ...ascii('RIFF'),
+    ...u32le(4 + body.length),
+    ...ascii('WEBP'),
+    ...body,
+  ];
+};
+/** Little-endian TIFF with one IFD entry: Orientation. */
+const exif = (orientation: number) => [
+  ...ascii('II'),
+  42,
+  0,
+  8,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0x12,
+  0x01,
+  3,
+  0,
+  1,
+  0,
+  0,
+  0,
+  orientation,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+];
+const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
+
+/** Codec that records the stored bytes. */
+function storingCodec(width = 400, height = 300) {
+  const stored: { bytes?: Uint8Array } = {};
+  const { value, encode } = codec(width, height, () => 1);
+  value.toDataUrl = async (blob) => {
+    stored.bytes = new Uint8Array(await blob.arrayBuffer());
+    return `data:${blob.type};base64,AA`;
+  };
+  return { value, encode, stored };
+}
+
+describe('metadata of small PNG and WebP files', () => {
+  it('removes metadata chunks from a PNG and keeps transparency and animation', async () => {
+    const kept = [
+      pngChunk('IHDR'),
+      pngChunk('acTL'),
+      pngChunk('tRNS'),
+      pngChunk('fcTL'),
+      pngChunk('IDAT'),
+      pngChunk('fcTL'),
+      pngChunk('fdAT'),
+    ];
+    const bytes = [
+      ...PNG_SIGNATURE,
+      ...kept[0],
+      ...pngChunk('eXIf', exif(1)),
+      ...pngChunk('tEXt', ascii('GPS\u0000here')),
+      ...kept.slice(1).flat(),
+      ...pngChunk('iTXt'),
+      ...pngChunk('tIME'),
+      ...pngChunk('IEND', []),
+    ];
+    const { value, encode, stored } = storingCodec();
+    const image = await createAnkiCardImage(
+      new File([new Uint8Array(bytes)], 'x', { type: 'image/png' }),
+      value
+    );
+    expect(encode).not.toHaveBeenCalled();
+    expect(image).toMatchObject({
+      mimeType: 'image/png',
+      width: 400,
+      height: 300,
+    });
+    expect(Array.from(stored.bytes ?? [])).toEqual([
+      ...PNG_SIGNATURE,
+      ...kept.flat(),
+      ...pngChunk('IEND', []),
+    ]);
+  });
+
+  it('removes EXIF and XMP from an animated WebP and keeps its frames', async () => {
+    // VP8X flags: alpha, EXIF, XMP and animation.
+    const vp8x = (flags: number) =>
+      webpChunk('VP8X', [flags, 0, 0, 0, 9, 0, 0, 9, 0, 0]);
+    const anim = webpChunk('ANIM', [0, 0, 0, 0, 0, 0]);
+    const frames = [
+      webpChunk('ANMF', [1, 2, 3]),
+      webpChunk('ANMF', [4, 5, 6, 7]),
+    ];
+    const bytes = webpFile([
+      vp8x(0x10 | 0x08 | 0x04 | 0x02),
+      anim,
+      ...frames,
+      webpChunk('EXIF', exif(1)),
+      webpChunk('XMP ', ascii('<x:xmpmeta/>')),
+    ]);
+    const { value, encode, stored } = storingCodec();
+    const image = await createAnkiCardImage(
+      new File([new Uint8Array(bytes)], 'x', { type: 'image/webp' }),
+      value
+    );
+    expect(encode).not.toHaveBeenCalled();
+    expect(image.mimeType).toBe('image/webp');
+    expect(Array.from(stored.bytes ?? [])).toEqual(
+      webpFile([vp8x(0x10 | 0x02), anim, ...frames])
+    );
+  });
+
+  it('re-encodes a small PNG whose EXIF rotates it, as the decoder shows it', async () => {
+    const bytes = [
+      ...PNG_SIGNATURE,
+      ...pngChunk('IHDR'),
+      ...pngChunk('eXIf', exif(6)),
+      ...pngChunk('IDAT'),
+      ...pngChunk('IEND', []),
+    ];
+    const { value, encode } = storingCodec();
+    await createAnkiCardImage(
+      new File([new Uint8Array(bytes)], 'x', { type: 'image/png' }),
+      value
+    );
+    expect(encode).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('transparent images that are re-encoded', () => {
+  it('keeps transparency with WebP when PNG is too large, instead of JPEG on white', async () => {
+    const { value, encode } = codec(400, 300, (type) =>
+      type === 'image/webp' ? 1000 : ANKI_IMAGE_MAX_BYTES + 1
+    );
+    value.hasTransparency = () => true;
+    const image = await createAnkiCardImage(file(5000), value);
+    expect(image).toMatchObject({
+      mimeType: 'image/webp',
+      width: 400,
+      height: 300,
+    });
+    expect(encode.mock.calls.map((call) => call[3])).toEqual([
+      'image/png',
+      'image/webp',
+    ]);
+  });
+
+  it('uses JPEG only after transparent formats failed at every size', async () => {
+    // Like a browser without a WebP encoder: it returns PNG.
+    const encode = vi.fn(
+      async (_i: unknown, _w: number, _h: number, type: string) =>
+        type === 'image/jpeg'
+          ? new Blob([new Uint8Array(10)], { type })
+          : new Blob([new Uint8Array(ANKI_IMAGE_MAX_BYTES + 1)], {
+              type: 'image/png',
+            })
+    );
+    const image = await createAnkiCardImage(file(ANKI_IMAGE_MAX_BYTES + 1), {
+      ...codec(3000, 3000, () => 1).value,
+      encode,
+      hasTransparency: () => true,
+    });
+    expect(image).toMatchObject({ mimeType: 'image/jpeg', width: 1280 });
+    // PNG and two WebP tries at 1280, 960 and 640, then JPEG.
+    expect(encode).toHaveBeenCalledTimes(10);
   });
 });
 

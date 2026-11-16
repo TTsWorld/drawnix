@@ -62,11 +62,21 @@ ankiCards?: Array<{
 ```
 
 Images are stored inline as data URLs, like other Drawnix images. PNG, JPEG,
-GIF and WebP are accepted. Every image is redrawn and re-encoded (PNG, then
-JPEG; JPEG first for JPEG files), scaled to at most 1280 px and 300 KiB. This
-drops metadata such as EXIF camera data and GPS location, which would
-otherwise be exported with the card. GIFs within those limits are kept
-unchanged so they stay animated; larger GIFs become still images. Images are
+GIF and WebP are accepted. Metadata such as EXIF camera data and GPS
+location, which would otherwise be exported with the card, is not stored:
+
+- PNG and WebP files within 1280 px and 300 KiB keep their image data; only
+  their metadata chunks (EXIF, XMP, text, time) are removed, so transparency
+  and animation (APNG, animated WebP) stay. One whose EXIF orientation
+  rotates it is re-encoded instead, so it is stored the way it shows.
+- GIFs within those limits are kept unchanged so they stay animated (GIF has
+  no EXIF; comment and XMP blocks, if any, stay).
+- Every other image is redrawn and re-encoded, scaled to at most 1280 px and
+  300 KiB: JPEG files as JPEG; images with transparency as PNG or WebP at
+  each size, falling back to JPEG on white only if none fits; other images
+  as PNG, then JPEG. Animated images re-encoded this way become still.
+
+Images are
 decoded at their original size before scaling, so a very large photo briefly
 needs memory for its full pixels. An
 image is not added if the document would exceed 7.5 MiB (hosts such as Stair
