@@ -30,7 +30,23 @@ function codec(
 }
 
 describe('card image compression', () => {
-  it('keeps small images as they are (GIF animation survives)', async () => {
+  it('re-encodes small PNG, JPEG and WebP files, dropping EXIF and other metadata', async () => {
+    for (const type of ['image/png', 'image/jpeg', 'image/webp']) {
+      const { value, encode } = codec(400, 300, () => 1);
+      const image = await createAnkiCardImage(file(5000, type), value);
+      // Drawn at its own size; the stored bytes are the encoder's, not the file's.
+      expect(encode).toHaveBeenCalledTimes(1);
+      expect(encode.mock.calls[0].slice(1, 4)).toEqual([
+        400,
+        300,
+        type === 'image/jpeg' ? 'image/jpeg' : 'image/png',
+      ]);
+      expect(image).toMatchObject({ width: 400, height: 300 });
+      expect(image.mimeType).not.toBe('image/webp');
+    }
+  });
+
+  it('keeps small GIFs as they are, so they stay animated', async () => {
     const { value, encode } = codec(400, 300, () => 1);
     const image = await createAnkiCardImage(file(5000, 'image/gif'), value);
     expect(encode).not.toHaveBeenCalled();

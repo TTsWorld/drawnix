@@ -62,8 +62,11 @@ ankiCards?: Array<{
 ```
 
 Images are stored inline as data URLs, like other Drawnix images. PNG, JPEG,
-GIF and WebP are accepted. Images larger than 1280 px or 300 KiB are scaled
-and re-encoded (PNG, then JPEG) to fit; smaller ones are kept unchanged. An
+GIF and WebP are accepted. Every image is redrawn and re-encoded (PNG, then
+JPEG; JPEG first for JPEG files), scaled to at most 1280 px and 300 KiB. This
+drops metadata such as EXIF camera data and GPS location, which would
+otherwise be exported with the card. GIFs within those limits are kept
+unchanged so they stay animated; larger GIFs become still images. An
 image is not added if the document would exceed 7.5 MiB (hosts such as Stair
 reject documents above 8 MiB); the panel shows an error, and a warning above
 6 MiB. The same limit applies to the whole editor: a paste or duplicate that

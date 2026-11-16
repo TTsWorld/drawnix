@@ -109,10 +109,13 @@ function fit(width: number, height: number, edge: number) {
 }
 
 /**
- * Turns a file into a card image. Small images are kept as they are (which
- * keeps GIF animation); larger ones are scaled to at most
- * ANKI_IMAGE_MAX_EDGE and re-encoded as PNG or JPEG until they fit
- * ANKI_IMAGE_MAX_BYTES. Throws AnkiImageError instead of failing silently.
+ * Turns a file into a card image. Every image except a small GIF is drawn and
+ * re-encoded, which drops metadata such as EXIF (camera, GPS location) that
+ * would otherwise be exported with the card; the decoder has applied the EXIF
+ * orientation. Images are scaled to at most ANKI_IMAGE_MAX_EDGE and encoded
+ * as PNG or JPEG (JPEG first for JPEG files) until they fit
+ * ANKI_IMAGE_MAX_BYTES. Small GIFs are kept as they are, so they stay
+ * animated. Throws AnkiImageError instead of failing silently.
  */
 export async function createAnkiCardImage(
   file: Blob,
@@ -131,14 +134,19 @@ export async function createAnkiCardImage(
     let blob: Blob | undefined;
     let size = { width: image.width, height: image.height };
     if (
+      file.type === 'image/gif' &&
       Math.max(image.width, image.height) <= ANKI_IMAGE_MAX_EDGE &&
       file.size <= ANKI_IMAGE_MAX_BYTES
     ) {
       blob = file;
     }
+    const encodings: typeof ENCODINGS =
+      file.type === 'image/jpeg'
+        ? [['image/jpeg', 0.92], ...ENCODINGS.filter(([t]) => t === 'image/jpeg')]
+        : ENCODINGS;
     for (const edge of blob ? [] : SCALES) {
       size = fit(image.width, image.height, edge);
-      for (const [type, quality] of ENCODINGS) {
+      for (const [type, quality] of encodings) {
         const encoded = await codec.encode(
           image,
           size.width,
