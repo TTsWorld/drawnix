@@ -1,7 +1,7 @@
 // Entry points of node widgets (note, Anki cards) on the node itself: a row of
 // round buttons on the bottom edge of the hovered or selected node, and a tiny
 // dot on nodes that have content while they are at rest.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type React from 'react';
 import { useBoard } from '@plait-board/react-board';
 import {
@@ -15,6 +15,11 @@ import classNames from 'classnames';
 import { useDrawnix } from '../hooks/use-drawnix';
 import { useI18n } from '../i18n';
 import { AnkiCardIcon, NoteIcon } from './icons';
+import {
+  getAccentTextColor,
+  getCanvasColor,
+  isDarkCanvas,
+} from './mindmap-node-accent';
 import {
   MIND_WIDGET_OPENER_CLASS_NAME,
   type MindNodeRect,
@@ -31,17 +36,18 @@ export const NODE_ACTION_MIN_SIZE = 18;
 /** Smallest size buttons shrink to when a neighbour leaves too little room. */
 export const NODE_ACTION_FIT_MIN_SIZE = 14;
 const NODE_ACTION_COUNT = 2;
-const NODE_ACTION_GAP = 4;
+export const NODE_ACTION_GAP = 6;
 /**
- * At 100% the buttons cover this much of the node's edge: the border, not the
- * text (short nodes have about 5px of padding around the text). It scales
- * down with the node when zoomed out.
+ * Each button takes presses this far past its edge (28px on a 22px button);
+ * it also covers the 2px canvas-colored ring around the button.
  */
-export const NODE_ACTION_EDGE_OVERLAP = 4;
-/** Room kept between the buttons and a neighbouring node. */
+export const NODE_ACTION_HIT_PAD = 3;
+/** Room kept between the press area and a neighbouring node. */
 const NODE_ACTION_CLEARANCE = 2;
 // Leaving the node for a gap next to the buttons must not drop them at once.
 const HOVER_LEAVE_DELAY = 150;
+/** Fade-out of buttons that are no longer shown; matches the stylesheet. */
+export const NODE_ACTION_EXIT_DURATION = 120;
 
 export function getNodeActionSize(zoom: number) {
   return Math.round(
@@ -52,34 +58,39 @@ export function getNodeActionSize(zoom: number) {
   );
 }
 
-export function getNodeActionEdgeOverlap(zoom: number) {
-  return NODE_ACTION_EDGE_OVERLAP * Math.min(1, zoom);
-}
-
 export interface NodeActionPlacement {
-  /** Center of the row. */
+  /** Center of the row: the middle of the node's width. */
   x: number;
-  top: number;
+  /** Center of the row: on the bottom (or top) border of the node. */
+  y: number;
   size: number;
   side: 'below' | 'above';
 }
 
+/** Room kept between the buttons and the node's text inside the node. */
+const NODE_ACTION_TEXT_CLEARANCE = 1;
+
 /**
- * Places a node's buttons centered on its bottom edge, as in the reference.
+ * Places a node's buttons centered on its bottom border, half inside the
+ * node, as in the reference. Small nodes have less than half a button of room
+ * under their text; there the buttons go only as far into the node as the
+ * text allows, so the border still crosses them but the text stays readable.
+ *
  * Sibling gaps shrink with zoom; when a neighbour leaves no room below, the
- * buttons go on the top edge, and if neither side has room they shrink to fit
- * the larger gap. Only when even the smallest size does not fit (far zoomed
- * out) do they stay below and cover the neighbour while shown.
+ * buttons go on the top border, and if neither side has room they shrink to
+ * fit the larger gap. Only when even the smallest size does not fit (far
+ * zoomed out) do they stay below and cover the neighbour while shown.
  */
 export function placeNodeActions(
   rect: MindNodeRect,
   rects: MindNodeRect[],
-  size: number,
-  overlap = NODE_ACTION_EDGE_OVERLAP
+  size: number
 ): NodeActionPlacement {
   const x = (rect.left + rect.right) / 2;
   const halfWidth =
-    (NODE_ACTION_COUNT * size + (NODE_ACTION_COUNT - 1) * NODE_ACTION_GAP) / 2;
+    (NODE_ACTION_COUNT * size + (NODE_ACTION_COUNT - 1) * NODE_ACTION_GAP) /
+      2 +
+    NODE_ACTION_HIT_PAD;
   let below = Infinity;
   let above = Infinity;
   for (const other of rects) {
@@ -89,23 +100,38 @@ export function placeNodeActions(
     else if (other.bottom <= rect.top)
       above = Math.min(above, rect.top - other.bottom);
   }
-  // Height the row takes outside the node for a given size.
-  const outside = (value: number) => value - overlap + NODE_ACTION_CLEARANCE;
-  const place = (side: 'below' | 'above', value: number) => ({
-    x,
-    size: value,
-    side,
-    top:
-      side === 'below'
-        ? rect.bottom - overlap
-        : rect.top + overlap - value,
-  });
-  if (outside(size) <= below) return place('below', size);
-  if (outside(size) <= above) return place('above', size);
+  const inside = {
+    below: rect.bottom - rect.contentBottom - NODE_ACTION_TEXT_CLEARANCE,
+    above: rect.contentTop - rect.top - NODE_ACTION_TEXT_CLEARANCE,
+  };
+  // How far a row of this size goes into the node, at most half of it.
+  const overlap = (side: 'below' | 'above', value: number) =>
+    Math.max(0, Math.min(value / 2, inside[side]));
+  // Height the row takes outside the node, press areas and clearance included.
+  const outside = (side: 'below' | 'above', value: number) =>
+    value - overlap(side, value) + NODE_ACTION_HIT_PAD + NODE_ACTION_CLEARANCE;
+  const place = (side: 'below' | 'above', value: number) => {
+    const offset = value / 2 - overlap(side, value);
+    return {
+      x,
+      y: side === 'below' ? rect.bottom + offset : rect.top - offset,
+      size: value,
+      side,
+    };
+  };
+  if (outside('below', size) <= below) return place('below', size);
+  if (outside('above', size) <= above) return place('above', size);
   const side = above > below ? 'above' : 'below';
-  const room = Math.max(above, below);
-  const fit = Math.floor(room + overlap - NODE_ACTION_CLEARANCE);
-  return place(side, Math.max(NODE_ACTION_FIT_MIN_SIZE, Math.min(size, fit)));
+  const room = side === 'above' ? above : below;
+  let fit = size;
+  while (fit > NODE_ACTION_FIT_MIN_SIZE && outside(side, fit) > room) fit--;
+  return place(side, fit);
+}
+
+/** Vertical strip a placed row takes presses in, press areas included. */
+export function getNodeActionStrip(placement: NodeActionPlacement) {
+  const half = placement.size / 2 + NODE_ACTION_HIT_PAD;
+  return { top: placement.y - half, bottom: placement.y + half };
 }
 
 /**
@@ -152,20 +178,19 @@ export const MindmapNodeActions = () => {
   // Hide while the pointer is held on the board: dragging, moving, selecting.
   const [pressing, setPressing] = useState(false);
   const bars = useRef(new Map<string, HTMLElement>());
-  const latest = useRef({
-    rects,
-    hoveredId,
-    size: NODE_ACTION_SIZE,
-    overlap: NODE_ACTION_EDGE_OVERLAP,
-  });
+  const latest = useRef({ rects, hoveredId, size: NODE_ACTION_SIZE });
+  // Buttons that were just hidden fade out from their last place.
+  const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
+  const shown = useRef<ReadonlySet<string>>(new Set());
+  const leaveTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   const readonly = PlaitBoard.isReadonly(board);
   // The tool switch updates app state, which renders this again.
   const selecting = isSelecting(board);
   const zoom = board.viewport?.zoom ?? 1;
   const size = getNodeActionSize(zoom);
-  const overlap = getNodeActionEdgeOverlap(zoom);
-  latest.current = { rects, hoveredId, size, overlap };
+  latest.current = { rects, hoveredId, size };
+  const canvas = getCanvasColor(board);
 
   const selected = getSelectedElements(board);
   // Typing in a node: its buttons would hang over the growing text.
@@ -224,20 +249,19 @@ export const MindmapNodeActions = () => {
         return;
       }
       const bounds = host.getBoundingClientRect();
-      const { rects, hoveredId, size, overlap } = latest.current;
+      const { rects, hoveredId, size } = latest.current;
       const hoveredRect = rects.find((rect) => rect.id === hoveredId);
-      const placement =
-        hoveredRect && placeNodeActions(hoveredRect, rects, size, overlap);
       setHovered(
         hitNodeRect(
           rects,
           event.clientX - bounds.left,
           event.clientY - bounds.top,
-          hoveredRect && placement
+          hoveredRect
             ? {
                 id: hoveredRect.id,
-                top: placement.top,
-                bottom: placement.top + placement.size,
+                ...getNodeActionStrip(
+                  placeNodeActions(hoveredRect, rects, size)
+                ),
               }
             : null
         )
@@ -305,6 +329,36 @@ export const MindmapNodeActions = () => {
     }
   }
 
+  const activeKey = [...active].sort().join(' ');
+  useLayoutEffect(() => {
+    const gone = [...shown.current].filter((id) => !active.has(id));
+    shown.current = new Set(active);
+    setLeaving((current) => {
+      const next = new Set([...current, ...gone]);
+      active.forEach((id) => next.delete(id));
+      return next.size === current.size &&
+        [...next].every((id) => current.has(id))
+        ? current
+        : next;
+    });
+    if (!gone.length) return;
+    const timer = setTimeout(() => {
+      leaveTimers.current.delete(timer);
+      setLeaving((current) => {
+        const next = new Set(current);
+        gone.forEach((id) => next.delete(id));
+        return next;
+      });
+    }, NODE_ACTION_EXIT_DURATION);
+    leaveTimers.current.add(timer);
+    // `active` is derived from the values in activeKey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeKey]);
+  useEffect(() => {
+    const timers = leaveTimers.current;
+    return () => timers.forEach((timer) => clearTimeout(timer));
+  }, []);
+
   const toggle = (widget: MindWidget, id: string) => {
     const isOpen = openWidget === widget && openId === id;
     openMindWidget(setAppState, isOpen ? null : widget, id);
@@ -344,88 +398,122 @@ export const MindmapNodeActions = () => {
     }
   };
 
+  const renderBar = (rect: MindNodeRect, ghost: boolean) => {
+    const placement = placeNodeActions(rect, rects, size);
+    const noteOpen = !ghost && openWidget === 'note' && openId === rect.id;
+    const cardsOpen = !ghost && openWidget === 'ankiCards' && openId === rect.id;
+    const noteLabel = t(rect.hasNote ? 'notes.open' : 'notes.add');
+    const cardsLabel = rect.cardCount
+      ? `${t('anki.open')} (${rect.cardCount})`
+      : t('anki.add');
+    const style = {
+      left: placement.x,
+      top: placement.y,
+      '--drawnix-node-action-size': `${placement.size}px`,
+      '--drawnix-node-action-scale': placement.size / NODE_ACTION_SIZE,
+      '--drawnix-node-accent': rect.accent,
+      '--drawnix-node-accent-text': getAccentTextColor(rect.accent),
+    } as React.CSSProperties;
+    const count = rect.cardCount > 0 && (
+      <span className="drawnix-node-action__count" aria-hidden="true">
+        {rect.cardCount > 99 ? '99+' : rect.cardCount}
+      </span>
+    );
+    const buttonClass = (filled: boolean, open: boolean) =>
+      classNames('drawnix-node-action', {
+        [MIND_WIDGET_OPENER_CLASS_NAME]: !ghost,
+        'drawnix-node-action--filled': filled,
+        'drawnix-node-action--open': open,
+      });
+    if (ghost) {
+      // A picture of the buttons fading out: not focusable, not pressable.
+      return (
+        <div
+          key={rect.id}
+          className={classNames(
+            'drawnix-node-actions',
+            'drawnix-node-actions--leaving',
+            ATTACHED_ELEMENT_CLASS_NAME
+          )}
+          data-leaving-node-id={rect.id}
+          data-side={placement.side}
+          aria-hidden="true"
+          style={style}
+        >
+          <span className={buttonClass(rect.hasNote, false)}>{NoteIcon}</span>
+          <span className={buttonClass(rect.cardCount > 0, false)}>
+            {AnkiCardIcon}
+            {count}
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div
+        key={rect.id}
+        ref={(element) => {
+          if (element) bars.current.set(rect.id, element);
+          else bars.current.delete(rect.id);
+        }}
+        role="toolbar"
+        aria-label={`${t('nodeActions.label')}: ${rect.topic}`}
+        className={classNames(
+          'drawnix-node-actions',
+          ATTACHED_ELEMENT_CLASS_NAME
+        )}
+        data-node-id={rect.id}
+        data-side={placement.side}
+        style={style}
+        onPointerDown={(event) => event.stopPropagation()}
+        onKeyDown={onBarKeyDown}
+      >
+        <button
+          type="button"
+          className={buttonClass(rect.hasNote, noteOpen)}
+          data-widget="note"
+          aria-label={noteLabel}
+          title={noteLabel}
+          aria-expanded={noteOpen}
+          onClick={() => toggle('note', rect.id)}
+        >
+          {NoteIcon}
+        </button>
+        <button
+          type="button"
+          className={buttonClass(rect.cardCount > 0, cardsOpen)}
+          data-widget="ankiCards"
+          aria-label={cardsLabel}
+          title={cardsLabel}
+          aria-expanded={cardsOpen}
+          tabIndex={-1}
+          onClick={() => toggle('ankiCards', rect.id)}
+        >
+          {AnkiCardIcon}
+          {count}
+        </button>
+      </div>
+    );
+  };
+
   return (
-    <div className="drawnix-node-actions-layer">
+    <div
+      className="drawnix-node-actions-layer"
+      data-canvas={isDarkCanvas(canvas) ? 'dark' : 'light'}
+      style={{ '--drawnix-canvas': canvas } as React.CSSProperties}
+    >
       {rects.map((rect) => {
-        if (active.has(rect.id)) {
-          const placement = placeNodeActions(rect, rects, size, overlap);
-          const noteOpen = openWidget === 'note' && openId === rect.id;
-          const cardsOpen = openWidget === 'ankiCards' && openId === rect.id;
-          const noteLabel = t(rect.hasNote ? 'notes.open' : 'notes.add');
-          const cardsLabel = rect.cardCount
-            ? `${t('anki.open')} (${rect.cardCount})`
-            : t('anki.add');
-          return (
-            <div
-              key={rect.id}
-              ref={(element) => {
-                if (element) bars.current.set(rect.id, element);
-                else bars.current.delete(rect.id);
-              }}
-              role="toolbar"
-              aria-label={`${t('nodeActions.label')}: ${rect.topic}`}
-              className={classNames(
-                'drawnix-node-actions',
-                ATTACHED_ELEMENT_CLASS_NAME
-              )}
-              data-node-id={rect.id}
-              data-side={placement.side}
-              style={
-                {
-                  left: placement.x,
-                  top: placement.top,
-                  '--drawnix-node-action-size': `${placement.size}px`,
-                } as React.CSSProperties
-              }
-              onPointerDown={(event) => event.stopPropagation()}
-              onKeyDown={onBarKeyDown}
-            >
-              <button
-                type="button"
-                className={classNames(
-                  'drawnix-node-action',
-                  MIND_WIDGET_OPENER_CLASS_NAME,
-                  {
-                    'drawnix-node-action--filled': rect.hasNote,
-                    'drawnix-node-action--open': noteOpen,
-                  }
-                )}
-                data-widget="note"
-                aria-label={noteLabel}
-                title={noteLabel}
-                aria-expanded={noteOpen}
-                onClick={() => toggle('note', rect.id)}
-              >
-                {NoteIcon}
-              </button>
-              <button
-                type="button"
-                className={classNames(
-                  'drawnix-node-action',
-                  MIND_WIDGET_OPENER_CLASS_NAME,
-                  {
-                    'drawnix-node-action--filled': rect.cardCount > 0,
-                    'drawnix-node-action--open': cardsOpen,
-                  }
-                )}
-                data-widget="ankiCards"
-                aria-label={cardsLabel}
-                title={cardsLabel}
-                aria-expanded={cardsOpen}
-                tabIndex={-1}
-                onClick={() => toggle('ankiCards', rect.id)}
-              >
-                {AnkiCardIcon}
-                {rect.cardCount > 0 && (
-                  <span className="drawnix-node-action__count" aria-hidden="true">
-                    {rect.cardCount > 99 ? '99+' : rect.cardCount}
-                  </span>
-                )}
-              </button>
-            </div>
-          );
-        }
+        if (active.has(rect.id)) return renderBar(rect, false);
+        if (leaving.has(rect.id)) return renderBar(rect, true);
         if (!rect.hasNote && !rect.cardCount) return null;
+        // The pointer or selection is on the node: its buttons speak for it,
+        // or will once the drag or text edit ends.
+        if (
+          !readonly &&
+          selecting &&
+          (rect.id === selectedId || rect.id === hoveredId)
+        ) {
+          return null;
+        }
         // A hint only; the buttons carry the state for assistive technology.
         return (
           <span
@@ -433,7 +521,13 @@ export const MindmapNodeActions = () => {
             className="drawnix-node-content-dot"
             data-node-id={rect.id}
             aria-hidden="true"
-            style={{ left: rect.right, top: rect.top }}
+            style={
+              {
+                left: rect.right,
+                top: rect.top,
+                '--drawnix-node-accent': rect.accent,
+              } as React.CSSProperties
+            }
           />
         );
       })}

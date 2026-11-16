@@ -1,81 +1,139 @@
 @use './mindmap-widget' as widget;
 
+// Colors come from the node: --drawnix-node-accent is its stroke (or branch)
+// color, --drawnix-canvas the board background of the theme. Tints are the
+// accent mixed into the canvas, so they work on light and dark themes alike.
 .drawnix {
   .drawnix-node-actions-layer {
     @include widget.overlay-layer;
+    --drawnix-node-empty-border: 40%;
+    &[data-canvas='dark'] {
+      --drawnix-node-empty-border: 55%;
+    }
   }
 
-  // Centered on the node's bottom border like the reference, or its top border
-  // when a neighbour is too close (placeNodeActions); a fixed screen size.
+  // Centered on the node's bottom border (or its top border when a neighbour
+  // is too close, see placeNodeActions); a fixed screen size.
   .drawnix-node-actions {
+    $accent: var(--drawnix-node-accent, var(--color-primary));
+    $canvas: var(--drawnix-canvas, #fff);
+    $scale: var(--drawnix-node-action-scale, 1);
     position: absolute;
     display: flex;
-    gap: 4px;
-    transform: translateX(-50%);
+    gap: 6px;
+    transform: translate(-50%, -50%);
     pointer-events: auto;
-  }
+    animation: drawnix-node-actions-in 0.12s ease-out;
 
-  .drawnix-node-action {
-    $size: var(--drawnix-node-action-size, 22px);
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: $size;
-    height: $size;
-    padding: 0;
-    color: var(--color-primary);
-    background: var(--color-surface-lowest);
-    border: 1.5px solid var(--color-primary);
-    border-radius: 50%;
-    box-shadow: 0 1px 3px #0000001f;
-    cursor: pointer;
-    svg {
-      width: 62%;
-      height: 62%;
+    // Fading out after being hidden; a picture only.
+    &--leaving {
+      pointer-events: none;
+      animation: drawnix-node-actions-out 0.12s ease-in forwards;
     }
-    &:hover {
-      background: var(--color-primary-light);
-    }
-    &:focus-visible {
-      outline: 2px solid var(--color-primary);
-      outline-offset: 2px;
-    }
-    // The node has content of this kind.
-    &--filled {
-      color: #fff;
-      background: var(--color-primary-darker);
-      border-color: var(--color-primary-darker);
+
+    .drawnix-node-action {
+      $size: var(--drawnix-node-action-size, 22px);
+      position: relative;
+      display: grid;
+      place-items: center;
+      box-sizing: border-box;
+      width: $size;
+      height: $size;
+      padding: 0;
+      color: color-mix(in srgb, #{$accent} 65%, #8a8f98);
+      background: $canvas;
+      border: 1px solid
+        color-mix(
+          in srgb,
+          #{$accent} var(--drawnix-node-empty-border),
+          transparent
+        );
+      border-radius: 50%;
+      // A ring in the canvas color lifts the button off the node's border.
+      // Browsers floor border widths to whole pixels, so the extra half pixel
+      // of the 1.5px border is an inset shadow (--drawnix-node-action-inner).
+      box-shadow: var(--drawnix-node-action-inner, 0 0 transparent),
+        0 0 0 2px $canvas, 0 1px 2px rgba(0, 0, 0, 0.08);
+      cursor: pointer;
+      transition: background-color 0.12s, border-color 0.12s,
+        transform 0.08s;
+      // 28px press area on a 22px button.
+      &::before {
+        content: '';
+        position: absolute;
+        inset: -3px;
+        border-radius: 50%;
+      }
+      svg {
+        width: calc(14px * #{$scale});
+        height: calc(14px * #{$scale});
+        stroke-width: 1.5px;
+        * {
+          vector-effect: non-scaling-stroke;
+        }
+      }
       &:hover {
-        background: var(--color-primary-darkest);
+        background: color-mix(in srgb, #{$accent} 10%, #{$canvas});
+        border-color: $accent;
+      }
+      &:active,
+      &--open {
+        background: color-mix(in srgb, #{$accent} 28%, #{$canvas});
+      }
+      &:active {
+        transform: scale(0.94);
+      }
+      &:focus {
+        outline: none;
+      }
+      &:focus-visible {
+        outline: 2px solid $accent;
+        outline-offset: 2px;
+      }
+      // The node has content of this kind, or its panel is open (pressing
+      // again closes it): accent icon on a tint.
+      &--filled,
+      &--open {
+        --drawnix-node-action-inner: inset 0 0 0 0.5px #{$accent};
+        color: $accent;
+        border-color: $accent;
+      }
+      &--filled {
+        background: color-mix(in srgb, #{$accent} 14%, #{$canvas});
+        &:hover {
+          background: color-mix(in srgb, #{$accent} 22%, #{$canvas});
+        }
+      }
+      &--filled:active,
+      &--open,
+      &--open:hover {
+        background: color-mix(in srgb, #{$accent} 28%, #{$canvas});
       }
     }
-    // Its panel is open; pressing again closes it.
-    &--open {
-      box-shadow: 0 0 0 3px var(--color-primary-light);
-    }
-  }
 
-  // On the corner away from the node, so it never reaches the node's text.
-  .drawnix-node-action__count {
-    // 14px on a 22px button, smaller with the button.
-    $height: calc(var(--drawnix-node-action-size, 22px) * 0.64);
-    position: absolute;
-    bottom: calc(#{$height} / -2 + 2px);
-    right: calc(#{$height} / -2 - 1px);
-    min-width: $height;
-    height: $height;
-    padding: 0 2px;
-    box-sizing: border-box;
-    font-size: calc(var(--drawnix-node-action-size, 22px) * 0.45);
-    font-weight: 600;
-    line-height: calc(#{$height} - 2px);
-    text-align: center;
-    color: #fff;
-    background: var(--color-primary-darkest);
-    border: 1px solid var(--color-surface-lowest);
-    border-radius: calc(#{$height} / 2);
-    [data-side='above'] & {
-      top: calc(#{$height} / -2 + 2px);
+    // On the corner away from the node, so it never reaches the node's text.
+    .drawnix-node-action__count {
+      position: absolute;
+      bottom: calc(-5px * #{$scale});
+      right: calc(-6px * #{$scale});
+      box-sizing: border-box;
+      min-width: calc(14px * #{$scale});
+      height: calc(14px * #{$scale});
+      padding: 0 calc(4px * #{$scale});
+      font-size: calc(10px * #{$scale});
+      font-weight: 600;
+      line-height: calc(14px * #{$scale});
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      color: var(--drawnix-node-accent-text, #fff);
+      background: $accent;
+      // Outside the box, as the 1.5px canvas-colored border.
+      box-shadow: 0 0 0 1.5px $canvas;
+      border-radius: calc(7px * #{$scale});
+      pointer-events: none;
+    }
+    &[data-side='above'] .drawnix-node-action__count {
+      top: calc(-5px * #{$scale});
       bottom: auto;
     }
   }
@@ -85,10 +143,36 @@
     position: absolute;
     width: 6px;
     height: 6px;
-    background: var(--color-primary);
-    border: 1.5px solid var(--color-surface-lowest);
+    background: var(--drawnix-node-accent, var(--color-primary));
+    box-shadow: 0 0 0 1.5px var(--drawnix-canvas, #fff);
     border-radius: 50%;
     transform: translate(-50%, -50%);
     pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .drawnix-node-actions {
+      animation: none;
+      &--leaving {
+        display: none;
+      }
+    }
+    .drawnix-node-action {
+      transition: none;
+    }
+  }
+}
+
+@keyframes drawnix-node-actions-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 2px));
+  }
+}
+
+@keyframes drawnix-node-actions-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 2px));
   }
 }

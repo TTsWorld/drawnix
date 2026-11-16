@@ -8,22 +8,28 @@ import {
   PlaitBoard,
   type PlaitElement,
   PlaitPointerType,
+  ThemeColorMode,
 } from '@plait/core';
 import { BasicShapes } from '@plait/draw';
-import { MindPointerType } from '@plait/mind';
+import { MindPointerType, MindThemeColors } from '@plait/mind';
 import { FreehandShape } from '../plugins/freehand/type';
 import { createMindmapDocument } from '../editor';
 import { MindmapAnkiCards } from './mindmap-anki-cards';
 import { MindmapNotes } from './mindmap-notes';
 import {
-  getNodeActionEdgeOverlap,
   getNodeActionSize,
+  getNodeActionStrip,
   hitNodeRect,
-  NODE_ACTION_EDGE_OVERLAP,
+  NODE_ACTION_EXIT_DURATION,
   NODE_ACTION_FIT_MIN_SIZE,
   placeNodeActions,
 } from './mindmap-node-actions';
 import type { MindNodeRect } from './mindmap-widgets';
+import {
+  getAccentTextColor,
+  getLuminance,
+  NODE_ACCENT_DARK_TEXT,
+} from './mindmap-node-accent';
 import {
   nodeAction,
   nodeActions,
@@ -110,12 +116,15 @@ describe('node action buttons', () => {
     // Harness nodes overlap; the last listed one (the root) wins.
     const bar = screen.getByRole('toolbar', { name: '节点操作: Original' });
     expect(bar.style.left).toBe('150px');
-    expect(bar.style.top).toBe(`${140 - NODE_ACTION_EDGE_OVERLAP}px`);
+    // On the bottom border at 140 (the CSS moves it up by half its height),
+    // as far into the node as the root's 10px text padding allows: 9px of
+    // the 11px half, so the center is 2px below the border.
+    expect(bar.style.top).toBe('142px');
     // The buttons show the state; the dot gives way.
     expect(dot(id)).toBeNull();
 
     // The strip under the node holds the buttons and still counts as hovered.
-    await pointer(host, 'pointermove', { clientX: 150, clientY: 155 });
+    await pointer(host, 'pointermove', { clientX: 150, clientY: 153 });
     expect(bars()).toHaveLength(1);
 
     // Leaving waits briefly so the pointer can cross the gap to the buttons.
@@ -187,6 +196,20 @@ describe('node action buttons', () => {
     const empty = nodeAction('Child', '添加 Anki 卡片');
     expect(empty.title).toBe('添加 Anki 卡片');
     expect(empty.querySelector('.drawnix-node-action__count')).toBeNull();
+    // The root's buttons fade out, out of reach, before its dot comes back.
+    const ghost = window.document.querySelector<HTMLElement>(
+      `[data-leaving-node-id="${id}"]`
+    ) as HTMLElement;
+    expect(ghost.getAttribute('aria-hidden')).toBe('true');
+    expect(ghost.querySelector('button')).toBeNull();
+    expect(dot(id)).toBeNull();
+    await act(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(resolve, NODE_ACTION_EXIT_DURATION + 20)
+        )
+    );
+    expect(ghost.isConnected).toBe(false);
     expect(dot(id)).toBeTruthy();
 
     await act(async () => {
@@ -444,6 +467,69 @@ describe('node action buttons', () => {
   });
 });
 
+describe('node action colors', () => {
+  const layer = () =>
+    window.document.querySelector<HTMLElement>(
+      '.drawnix-node-actions-layer'
+    ) as HTMLElement;
+  const accentOf = (element: HTMLElement | null) =>
+    element?.style.getPropertyValue('--drawnix-node-accent');
+
+  it('takes the node stroke or branch color, and a readable one for the root', async () => {
+    const { board, id, childId } = await setup();
+    expect(layer().dataset.canvas).toBe('light');
+    expect(layer().style.getPropertyValue('--drawnix-canvas')).toBe('#ffffff');
+    // The default root stroke is its #f5f5f5 fill, lost on white: text color.
+    expect(accentOf(dot(id))).toBe('#333333');
+    await selectMindNode(board, childId);
+    // First branch color of the default theme.
+    expect(accentOf(nodeActions('Child'))).toBe('#A287E0');
+    expect(
+      nodeActions('Child').style.getPropertyValue('--drawnix-node-accent-text')
+    ).toBe('#ffffff');
+  });
+
+  it('follows the theme, with a dark canvas on dark themes', async () => {
+    const { board, id, childId } = await setup();
+    // As Drawnix configures its board.
+    board.options.themeColors = MindThemeColors;
+    await act(async () => {
+      BoardTransforms.updateThemeColor(board, ThemeColorMode.dark);
+    });
+    expect(layer().dataset.canvas).toBe('dark');
+    expect(layer().style.getPropertyValue('--drawnix-canvas')).toBe('#141414');
+    // The white root reads on the dark canvas.
+    expect(accentOf(dot(id))).toBe('#FFFFFF');
+    await selectMindNode(board, childId);
+    expect(accentOf(nodeActions('Child'))).toBe('#3DD1AE');
+  });
+
+  it('hides the dot of the selected node, whose buttons show instead', async () => {
+    const { board, id } = await setup();
+    expect(dot(id)).toBeTruthy();
+    await selectMindNode(board, id);
+    expect(dot(id)).toBeNull();
+    expect(accentOf(nodeActions('Original'))).toBe('#333333');
+  });
+
+  it('puts dark text on light accents in the count badge', () => {
+    expect(getAccentTextColor('#A287E0')).toBe('#ffffff');
+    expect(getAccentTextColor('#333333')).toBe('#ffffff');
+    // Yellow branch and the white root of dark themes.
+    expect(getAccentTextColor('#E0B75E')).toBe(NODE_ACCENT_DARK_TEXT);
+    expect(getAccentTextColor('#FFFFFF')).toBe(NODE_ACCENT_DARK_TEXT);
+    // Colors that cannot be measured keep the default.
+    expect(getAccentTextColor('rebeccapurple')).toBe('#ffffff');
+  });
+
+  it('measures hex colors with or without alpha and padding', () => {
+    expect(getLuminance('#fff')).toBe(1);
+    expect(getLuminance('#00000080')).toBe(0);
+    expect(getLuminance('#FF877B ')).toBeCloseTo(0.4, 1);
+    expect(getLuminance('rgb(0, 0, 0)')).toBeNull();
+  });
+});
+
 describe('node action geometry', () => {
   const rect = (id: string, top: number): MindNodeRect => ({
     id,
@@ -454,14 +540,21 @@ describe('node action geometry', () => {
     bottom: top + 30,
     hasNote: false,
     cardCount: 0,
+    // Roomy padding: more than half a button between text and border.
+    contentTop: top + 12,
+    contentBottom: top + 18,
+    accent: '#A287E0',
   });
 
-  it('covers less of the node edge when zoomed out', () => {
-    expect(getNodeActionEdgeOverlap(2)).toBe(NODE_ACTION_EDGE_OVERLAP);
-    expect(getNodeActionEdgeOverlap(1)).toBe(NODE_ACTION_EDGE_OVERLAP);
-    expect(getNodeActionEdgeOverlap(0.5)).toBe(NODE_ACTION_EDGE_OVERLAP / 2);
+  it('counts the press areas and the half of the row outside the node', () => {
     const rects = [rect('a', 0)];
-    expect(placeNodeActions(rects[0], rects, 18, 2).top).toBe(28);
+    const placement = placeNodeActions(rects[0], rects, 22);
+    // 22px buttons with 3px press areas around them, centered on y = 30.
+    expect(getNodeActionStrip(placement)).toEqual({ top: 16, bottom: 44 });
+    expect(getNodeActionStrip(placeNodeActions(rects[0], rects, 18))).toEqual({
+      top: 18,
+      bottom: 42,
+    });
   });
 
   it('keeps a fixed screen size at and above 100% and shrinks to a minimum below', () => {
@@ -495,16 +588,20 @@ describe('node action geometry', () => {
       rect('down', 60 + 2 * gap),
     ];
     const mid = (rects: MindNodeRect[]) => rects[1];
-    // The row takes size - 4 (edge overlap) + 2 (clearance) outside the node.
+    // The row takes size / 2 + 3 (press area) + 2 (clearance) outside the node.
 
     it('centers them on the bottom edge when there is room', () => {
       const rects = stack(30);
       expect(placeNodeActions(mid(rects), rects, 22)).toEqual({
         x: 50,
-        top: 90 - NODE_ACTION_EDGE_OVERLAP,
+        y: 90,
         size: 22,
         side: 'below',
       });
+      // Exactly enough room: 11 + 3 + 2.
+      expect(placeNodeActions(mid(stack(16)), stack(16), 22).side).toBe('below');
+      // One pixel short on both sides: a size that fits, 2 × (15 - 3 - 2).
+      expect(placeNodeActions(mid(stack(15)), stack(15), 22).size).toBe(20);
       // The last node has nothing below.
       expect(placeNodeActions(rects[2], stack(1), 22).side).toBe('below');
     });
@@ -512,23 +609,39 @@ describe('node action geometry', () => {
     it('moves them to the top edge when the node below is too close', () => {
       const rects = [rect('mid', 0), rect('down', 40)];
       const placement = placeNodeActions(rects[0], rects, 22);
-      expect(placement).toEqual({
+      expect(placement).toEqual({ x: 50, y: 0, size: 22, side: 'above' });
+    });
+
+    it('shrinks them to the larger gap when neither side has room', () => {
+      const rects = [rect('up', 0), rect('mid', 44), rect('down', 86)];
+      // 14px above, 12px below: 2 × (14 - 3 - 2) = 18 above.
+      expect(placeNodeActions(rects[1], rects, 22)).toEqual({
         x: 50,
-        top: NODE_ACTION_EDGE_OVERLAP - 22,
-        size: 22,
+        y: 44,
+        size: 18,
         side: 'above',
       });
     });
 
-    it('shrinks them to the larger gap when neither side has room', () => {
-      const rects = [rect('up', 0), rect('mid', 44), rect('down', 90)];
-      // 14px above, 16px below: 16 + 4 - 2 = 18.
-      expect(placeNodeActions(rects[1], rects, 22)).toEqual({
+    it('goes into a small node only as far as its text allows', () => {
+      // 5px under the text: 4px into the node, keeping 1px off the text.
+      const small = { ...rect('a', 0), contentTop: 5, contentBottom: 25 };
+      expect(placeNodeActions(small, [small], 22)).toEqual({
         x: 50,
-        top: 74 - NODE_ACTION_EDGE_OVERLAP,
-        size: 18,
+        y: 30 + 11 - 4,
+        size: 22,
         side: 'below',
       });
+      // It then takes more room outside: 22 - 4 + 3 + 2 = 23.
+      const below = (gap: number) => ({ ...rect('b', 30 + gap) });
+      expect(placeNodeActions(small, [small, below(23)], 22).side).toBe(
+        'below'
+      );
+      const above = placeNodeActions(small, [small, below(22)], 22);
+      expect(above).toEqual({ x: 50, y: -(11 - 4), size: 22, side: 'above' });
+      // Text touching the border: the buttons sit under it.
+      const full = { ...small, contentTop: 0, contentBottom: 30 };
+      expect(placeNodeActions(full, [full], 22).y).toBe(41);
     });
 
     it('keeps a minimum size far zoomed out', () => {

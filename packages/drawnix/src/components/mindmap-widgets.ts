@@ -22,10 +22,11 @@ import {
   toScreenPointFromHostPoint,
   Transforms,
 } from '@plait/core';
-import { MindElement } from '@plait/mind';
+import { MindElement, NodeSpace, type PlaitMindBoard } from '@plait/mind';
 import { Node } from 'slate';
 import { getAnkiCards } from '../anki-cards';
 import type { DrawnixState } from '../hooks/use-drawnix';
+import { getCanvasColor, getNodeAccent } from './mindmap-node-accent';
 
 export type MindWidget = 'note' | 'ankiCards';
 
@@ -198,6 +199,26 @@ export interface MindNodeRect {
   bottom: number;
   hasNote: boolean;
   cardCount: number;
+  /** Top and bottom of the node's text and image, which buttons must not cover. */
+  contentTop: number;
+  contentBottom: number;
+  /** The node's stroke (or branch) color, for its buttons and dot. */
+  accent: string;
+}
+
+/**
+ * Space between a node's border and its content (image or text), the same at
+ * the top and the bottom: Plait lays a node out as padding, image, text,
+ * padding, and pads an image like text. Read from the layout, so text is not
+ * measured on every board change.
+ */
+function getContentPadding(board: PlaitBoard, element: MindElement) {
+  const mindBoard = board as PlaitMindBoard;
+  const padding = MindElement.hasImage(element)
+    ? NodeSpace.getImageTopSpace(mindBoard, element)
+    : NodeSpace.getTextTopSpace(mindBoard, element);
+  // Unknown: keep the buttons off the node.
+  return Number.isFinite(padding) ? padding : 0;
 }
 
 /**
@@ -224,6 +245,7 @@ export function useMindNodeRects(board: PlaitBoard): MindNodeRect[] {
         );
         return [x - bounds.left, y - bounds.top];
       };
+      const canvas = getCanvasColor(board);
       const result: MindNodeRect[] = [];
       findElements(board, {
         match: (element) => MindElement.isMindElement(board, element),
@@ -236,6 +258,12 @@ export function useMindNodeRects(board: PlaitBoard): MindNodeRect[] {
           rect.x + rect.width,
           rect.y + rect.height,
         ]);
+        const padding = getContentPadding(board, node);
+        const [, contentTop] = toEditorPoint([rect.x, rect.y + padding]);
+        const [, contentBottom] = toEditorPoint([
+          rect.x,
+          rect.y + rect.height - padding,
+        ]);
         result.push({
           id: node.id,
           topic: Node.string(node.data.topic),
@@ -245,6 +273,9 @@ export function useMindNodeRects(board: PlaitBoard): MindNodeRect[] {
           bottom,
           hasNote: hasNote(node),
           cardCount: getAnkiCards(node).length,
+          contentTop,
+          contentBottom,
+          accent: getNodeAccent(board, node, canvas),
         });
       });
       setRects(result);
