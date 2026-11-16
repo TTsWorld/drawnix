@@ -4,17 +4,22 @@ export const createIcon = (svg: React.ReactNode) => {
   return svg;
 };
 
+// Note and Anki card buttons on mind-map nodes. Shapes from Lucide
+// (https://lucide.dev, ISC License, Copyright (c) Lucide Contributors):
+// "sticky-note" and "gallery-vertical-end". The button styles draw their
+// strokes at 1.5 screen pixels.
 export const NoteIcon = createIcon(
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-    <path d="M14 3v6h6M8 13h8M8 17h5" />
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z" />
+    <path d="M15 3v4a2 2 0 0 0 2 2h4" />
   </svg>
 );
 
 export const AnkiCardIcon = createIcon(
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <rect x="3" y="6" width="14" height="15" rx="2" />
-    <path d="M7 3h12a2 2 0 0 1 2 2v12M7 11h6M7 15h4" />
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M7 2h10" />
+    <path d="M5 6h14" />
+    <rect width="18" height="12" x="3" y="10" rx="2" />
   </svg>
 );
 
