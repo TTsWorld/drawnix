@@ -3,7 +3,6 @@ import type React from 'react';
 import { useBoard } from '@plait-board/react-board';
 import {
   ATTACHED_ELEMENT_CLASS_NAME,
-  PlaitBoard,
   PlaitHistoryBoard,
   type PlaitOperation,
   Transforms,
@@ -40,6 +39,7 @@ import { AnkiCardPicker } from './mindmap-anki-card-picker';
 import {
   closeMindWidgetPanel,
   findMindElement,
+  findMindElementPath,
   getMindWidgetPanelProps,
   setNodeFromInput,
   useCloseOnOutsidePointerDown,
@@ -295,7 +295,7 @@ export const MindmapAnkiCards = () => {
       Transforms.setNode(
         board,
         properties,
-        PlaitBoard.findPath(board, element)
+        findMindElementPath(board, element)
       );
     });
     return true;

@@ -21,3 +21,25 @@ export function findElementById(
   }
   return undefined;
 }
+
+/**
+ * Path of the element with this ID in the document tree. Unlike
+ * `PlaitBoard.findPath`, this does not depend on the node-to-path maps that
+ * rendering keeps: nodes in a collapsed branch are not rendered, so a node
+ * object created there (by editing it) has no entry until it is shown again.
+ */
+export function findElementPathById(
+  elements: PlaitElement[],
+  id: string
+): number[] | undefined {
+  for (let index = 0; index < elements.length; index++) {
+    const element = elements[index];
+    if (!element) continue;
+    if (element.id === id) return [index];
+    if (Array.isArray(element.children)) {
+      const path = findElementPathById(element.children, id);
+      if (path) return [index, ...path];
+    }
+  }
+  return undefined;
+}

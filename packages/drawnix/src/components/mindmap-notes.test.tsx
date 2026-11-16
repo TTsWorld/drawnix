@@ -5,6 +5,7 @@ import { BoardTransforms, PlaitBoard, Transforms } from '@plait/core';
 import { createMindmapDocument } from '../editor';
 import { MindmapNotes } from './mindmap-notes';
 import {
+  keepRenderPathsForShownNodesOnly,
   nodeAction,
   renderMindmapWidgets,
   selectMindNode,
@@ -67,6 +68,30 @@ describe('mind-map note editing', () => {
       }
     }
   );
+
+  it('keeps saving the note of a node inside a collapsed branch', async () => {
+    const document = createMindmapDocument('# Original\n## Child');
+    const root = document.elements[0];
+    root.isCollapsed = true;
+    const child = root.children[0];
+    const { board, editor } = await renderMindmapWidgets(
+      document.elements,
+      () => ({ openNoteId: child.id }),
+      <MindmapNotes />
+    );
+    board.isRecursion = (element) => !element.isCollapsed;
+    // Each keystroke creates a new node object that is never rendered.
+    keepRenderPathsForShownNodesOnly(board);
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement;
+    for (const value of ['a', 'ab', 'abc']) {
+      await act(async () => {
+        fireEvent.input(input, { target: { value } });
+      });
+    }
+    expect(JSON.parse(editor.serialize()).elements[0].children[0].note).toBe(
+      'abc'
+    );
+  });
 
   it('closes on a press outside the panel after saving the typed text', async () => {
     const { input, editor, board } = await setup('A');

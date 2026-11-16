@@ -31,7 +31,7 @@ import {
 } from '@plait/mind';
 import { Node } from 'slate';
 import { nodeHasAnkiCards } from '../anki-cards';
-import { findElementById } from '../mind-tree';
+import { findElementById, findElementPathById } from '../mind-tree';
 import type { DrawnixState } from '../hooks/use-drawnix';
 import { getCanvasColor, getNodeAccent } from './mindmap-node-accent';
 
@@ -67,6 +67,22 @@ export function findMindElement(
 }
 
 /**
+ * Path of a node for a panel write. Panels stay open for nodes inside a
+ * collapsed branch; Plait does not keep render paths for node objects created
+ * there, so `PlaitBoard.findPath` would throw on the second edit.
+ */
+export function findMindElementPath(
+  board: PlaitBoard,
+  element: MindElement
+): number[] {
+  const path = findElementPathById(board.children, element.id);
+  if (!path) {
+    throw new Error(`Unable to find the path for mind node ${element.id}`);
+  }
+  return path;
+}
+
+/**
  * Sets node properties from a text input. Continuous input on the same field
  * becomes one undo step; `lastInputOperation` must be reset when the input
  * loses focus or another edit starts a new step.
@@ -87,7 +103,7 @@ export function setNodeFromInput(
     ? PlaitHistoryBoard.withMerging
     : PlaitHistoryBoard.withNewBatch;
   updateHistory(board, () => {
-    Transforms.setNode(board, properties, PlaitBoard.findPath(board, element));
+    Transforms.setNode(board, properties, findMindElementPath(board, element));
   });
   const batch = board.history.undos[board.history.undos.length - 1];
   const operation = batch[batch.length - 1];

@@ -17,6 +17,7 @@ import {
 import type { AnkiImageCodec } from '../anki-card-images';
 import { MindmapNotes } from './mindmap-notes';
 import {
+  keepRenderPathsForShownNodesOnly,
   nodeAction,
   renderMindmapWidgets,
   selectMindNode,
@@ -476,6 +477,30 @@ describe('mind-map Anki cards', () => {
     expect(field('卡片 1 正面').value).toBe('Q');
   });
 
+  it('keeps saving cards of a node inside a collapsed branch', async () => {
+    const document = createMindmapDocument('# Original\n## Child');
+    const root = document.elements[0] as PlaitElement;
+    root.isCollapsed = true;
+    const child = root.children[0];
+    child.ankiCards = [{ id: 'c1', front: 'Q', back: 'A' }];
+    const { board, editor } = await renderMindmapWidgets(
+      document.elements,
+      () => ({ openAnkiCardsId: child.id }),
+      <MindmapAnkiCards />
+    );
+    board.isRecursion = (element) => !element.isCollapsed;
+    // Each edit creates a new node object that is never rendered.
+    keepRenderPathsForShownNodesOnly(board);
+    await type(field('卡片 1 正面'), 'Q1');
+    await type(field('卡片 1 正面'), 'Q12');
+    await addCard();
+    await type(field('卡片 2 正面'), 'second');
+    const cards = editor
+      .readAnkiCards()
+      .find((node) => node.nodeId === child.id);
+    expect(cards?.cards.map((card) => card.front)).toEqual(['Q12', 'second']);
+  });
+
   it('closes with Escape and when the node is deleted', async () => {
     const { board, id } = await setup({
       cards: [{ id: 'c1', front: 'Q', back: 'A' }],
@@ -582,7 +607,9 @@ describe('Anki card panel layout and images', () => {
     // Adding is a separate button; deleting is the item at the end of each
     // row (a menu may only hold menu items).
     expect(
-      screen.queryAllByRole('menuitem').map((item) => item.getAttribute('aria-label'))
+      screen
+        .queryAllByRole('menuitem')
+        .map((item) => item.getAttribute('aria-label'))
     ).toEqual(['删除卡片 1', '删除卡片 2']);
     expect(screen.queryByText('删除当前卡片')).toBeNull();
     const rows = Array.from(
@@ -982,7 +1009,10 @@ describe('Anki card panel layout and images', () => {
     const pasted = new Event('paste', { bubbles: true, cancelable: true });
     Object.assign(pasted, { clipboardData: transfer([png()]) });
     await act(async () => {
-      fireEvent(screen.getByRole('complementary', { name: 'Anki 卡片' }), pasted);
+      fireEvent(
+        screen.getByRole('complementary', { name: 'Anki 卡片' }),
+        pasted
+      );
     });
     expect(pasted.defaultPrevented).toBe(true);
     expect(screen.getByRole('alert').textContent).toBe(

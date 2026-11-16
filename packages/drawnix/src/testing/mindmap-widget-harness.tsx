@@ -11,6 +11,8 @@ import {
   fakeNodeWeakMap,
   findElements,
   ListRender,
+  NODE_TO_INDEX,
+  NODE_TO_PARENT,
   PlaitBoard,
   type PlaitElement,
   PlaitPointerType,
@@ -105,6 +107,33 @@ export async function renderMindmapWidgets(
     render(<Harness />);
   });
   return { board, editor, id, appState: state };
+}
+
+/**
+ * Like Plait's ListRender, which does not render the children of a collapsed
+ * node: from now on, nodes inside a collapsed branch have no render path, so
+ * `PlaitBoard.findPath` cannot find them.
+ */
+export function keepRenderPathsForShownNodesOnly(board: PlaitBoard) {
+  const onChange = board.onChange;
+  const forget = (elements: PlaitElement[]) => {
+    for (const element of elements) {
+      NODE_TO_INDEX.delete(element);
+      NODE_TO_PARENT.delete(element);
+      forget(element.children ?? []);
+    }
+  };
+  const visit = (elements: PlaitElement[]) => {
+    for (const element of elements) {
+      if (element.isCollapsed) forget(element.children ?? []);
+      else visit(element.children ?? []);
+    }
+  };
+  board.onChange = () => {
+    onChange();
+    visit(board.children);
+  };
+  board.onChange();
 }
 
 /** Selects one node, which shows its action buttons, as a click on it would. */
