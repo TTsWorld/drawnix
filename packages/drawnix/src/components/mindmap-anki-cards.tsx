@@ -675,7 +675,12 @@ export const MindmapAnkiCards = () => {
                   type="button"
                   role="tab"
                   aria-selected={side === value}
-                  aria-controls={fieldId(current.id, `panel-${value}`)}
+                  // Only the shown side's panel exists.
+                  aria-controls={
+                    side === value
+                      ? fieldId(current.id, `panel-${value}`)
+                      : undefined
+                  }
                   tabIndex={side === value ? 0 : -1}
                   onClick={() => select(current.id, value)}
                 >
@@ -789,7 +794,14 @@ export const MindmapAnkiCards = () => {
         <div
           className="drawnix-anki-preview"
           role="dialog"
+          aria-modal="true"
           aria-label={preview.label}
+          onKeyDown={(event) => {
+            // The close button is the only control: keep Tab on it.
+            if (event.key !== 'Tab') return;
+            event.preventDefault();
+            event.currentTarget.querySelector<HTMLElement>('button')?.focus();
+          }}
         >
           <button
             type="button"

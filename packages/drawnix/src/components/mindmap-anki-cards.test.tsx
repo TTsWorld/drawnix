@@ -98,7 +98,7 @@ async function chooseCard(name: string | RegExp) {
   });
 }
 const deleteButton = (n: number) =>
-  screen.getByRole('button', { name: `删除卡片 ${n}` });
+  screen.getByRole('menuitem', { name: `删除卡片 ${n}` });
 /** Deletes card `n` with its row button, opening the menu if needed. */
 async function deleteCard(n: number) {
   if (!screen.queryByRole('menu')) await openMenu();
@@ -579,9 +579,11 @@ describe('Anki card panel layout and images', () => {
       ['卡片 1 · First question', 'true'],
       ['卡片 2 · （正面为空）', 'false'],
     ]);
-    // Adding is a separate button; deleting is a button at the end of each
-    // row, not a menu entry.
-    expect(screen.queryAllByRole('menuitem')).toEqual([]);
+    // Adding is a separate button; deleting is the item at the end of each
+    // row (a menu may only hold menu items).
+    expect(
+      screen.queryAllByRole('menuitem').map((item) => item.getAttribute('aria-label'))
+    ).toEqual(['删除卡片 1', '删除卡片 2']);
     expect(screen.queryByText('删除当前卡片')).toBeNull();
     const rows = Array.from(
       document.querySelectorAll('.drawnix-anki-menu-row')
@@ -593,9 +595,11 @@ describe('Anki card panel layout and images', () => {
         )
       )
     ).toEqual([
-      ['menuitemradio', '删除卡片 1'],
-      ['menuitemradio', '删除卡片 2'],
+      // Only menu items in a menu: the delete button is one too.
+      ['menuitemradio', 'menuitem'],
+      ['menuitemradio', 'menuitem'],
     ]);
+    expect(deleteButton(2).getAttribute('aria-label')).toBe('删除卡片 2');
     await act(async () => {
       fireEvent.click(screen.getByRole('menuitemradio', { name: /^卡片 2/ }));
     });
@@ -847,6 +851,12 @@ describe('Anki card panel layout and images', () => {
     await twoCards();
     const front = screen.getByRole('tab', { name: '正面' });
     expect(front.getAttribute('aria-selected')).toBe('true');
+    // aria-controls only points at a panel that exists.
+    for (const tab of screen.getAllByRole('tab')) {
+      const controls = tab.getAttribute('aria-controls');
+      if (controls) expect(document.getElementById(controls)).not.toBeNull();
+    }
+    expect(front.getAttribute('aria-controls')).toBeTruthy();
     await act(async () => {
       fireEvent.keyDown(front, { key: 'ArrowRight' });
     });
@@ -994,9 +1004,23 @@ describe('Anki card panel layout and images', () => {
       fireEvent.click(screen.getByRole('button', { name: '查看大图: 图片 1' }));
     });
     const dialog = screen.getByRole('dialog', { name: '图片 1' });
-    expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: '关闭大图' })
-    );
+    const closePreview = screen.getByRole('button', { name: '关闭大图' });
+    expect(document.activeElement).toBe(closePreview);
+    // Modal: it covers the panel, so Tab stays inside it.
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    for (const shiftKey of [false, true]) {
+      const tab = new KeyboardEvent('keydown', {
+        key: 'Tab',
+        shiftKey,
+        bubbles: true,
+        cancelable: true,
+      });
+      await act(async () => {
+        closePreview.dispatchEvent(tab);
+      });
+      expect(tab.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(closePreview);
+    }
     await act(async () => {
       fireEvent.keyDown(dialog, { key: 'Escape' });
     });

@@ -420,6 +420,36 @@ describe('node action buttons', () => {
       expect(event.defaultPrevented).toBe(false);
     });
 
+    it('moves the single Tab stop with the focus (roving tab index)', async () => {
+      await focusedSetup();
+      const note = nodeAction('Original', '打开备注');
+      const cards = nodeAction('Original', '打开 Anki 卡片');
+      note.focus();
+      await act(async () => {
+        fireEvent.keyDown(note, { key: 'ArrowRight' });
+      });
+      expect(window.document.activeElement).toBe(cards);
+      expect(cards.tabIndex).toBe(0);
+      expect(note.tabIndex).toBe(-1);
+      await act(async () => {
+        fireEvent.keyDown(cards, { key: 'Home' });
+      });
+      expect(note.tabIndex).toBe(0);
+      expect(cards.tabIndex).toBe(-1);
+    });
+
+    it('announces whether the selected node has a note or cards', async () => {
+      const { board, id, childId } = await focusedSetup();
+      const live = () =>
+        window.document.querySelector('.drawnix-node-content-status');
+      expect(live()?.getAttribute('aria-live')).toBe('polite');
+      expect(live()?.textContent).toBe('Original：有备注和卡片');
+      await selectMindNode(board, childId);
+      expect(live()?.textContent).toBe('');
+      await selectMindNode(board, id);
+      expect(live()?.textContent).toBe('Original：有备注和卡片');
+    });
+
     it('moves between buttons with arrows, activates them and returns to the board with Escape', async () => {
       const { host } = await focusedSetup();
       const note = nodeAction('Original', '打开备注');

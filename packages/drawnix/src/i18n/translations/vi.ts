@@ -2,6 +2,9 @@ import { Translations } from '../types';
 
 const viTranslations: Translations = {
   'nodeActions.label': "Thao tác nút",
+  'nodeActions.hasNote': "{topic}: có ghi chú",
+  'nodeActions.hasCards': "{topic}: có thẻ",
+  'nodeActions.hasNoteAndCards': "{topic}: có ghi chú và thẻ",
   'notes.add': "Thêm ghi chú",
   'notes.open': "Mở ghi chú",
   'notes.title': "Ghi chú nút",

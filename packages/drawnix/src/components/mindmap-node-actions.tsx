@@ -221,6 +221,8 @@ export const MindmapNodeActions = () => {
   const { appState, setAppState } = useDrawnix();
   const rects = useMindNodeRects(board);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // Roving tab stop: the button that last had focus is the one Tab reaches.
+  const [tabStop, setTabStop] = useState<MindWidget>('note');
   // Hide while the pointer is held on the board: dragging, moving, selecting.
   const [pressing, setPressing] = useState(false);
   const bars = useRef(new Map<string, HTMLElement>());
@@ -524,6 +526,8 @@ export const MindmapNodeActions = () => {
           aria-label={noteLabel}
           title={noteLabel}
           aria-expanded={noteOpen}
+          tabIndex={tabStop === 'note' ? 0 : -1}
+          onFocus={() => setTabStop('note')}
           onClick={() => toggle('note', rect.id)}
         >
           {NoteIcon}
@@ -535,7 +539,8 @@ export const MindmapNodeActions = () => {
           aria-label={cardsLabel}
           title={cardsLabel}
           aria-expanded={cardsOpen}
-          tabIndex={-1}
+          tabIndex={tabStop === 'ankiCards' ? 0 : -1}
+          onFocus={() => setTabStop('ankiCards')}
           onClick={() => toggle('ankiCards', rect.id)}
         >
           {AnkiCardIcon}
@@ -544,12 +549,31 @@ export const MindmapNodeActions = () => {
     );
   };
 
+  // The dots are pictures only; announce what the selected node holds.
+  const selectedRect = rects.find((rect) => rect.id === selectedId);
+  const contentKey = !selectedRect
+    ? null
+    : selectedRect.hasNote && selectedRect.hasCards
+    ? 'nodeActions.hasNoteAndCards'
+    : selectedRect.hasNote
+    ? 'nodeActions.hasNote'
+    : selectedRect.hasCards
+    ? 'nodeActions.hasCards'
+    : null;
+  const contentStatus =
+    contentKey && selectedRect
+      ? t(contentKey).replace('{topic}', selectedRect.topic)
+      : '';
+
   return (
     <div
       className="drawnix-node-actions-layer"
       data-canvas={isDarkCanvas(canvas) ? 'dark' : 'light'}
       style={{ '--drawnix-canvas': canvas } as React.CSSProperties}
     >
+      <span className="drawnix-node-content-status" aria-live="polite">
+        {contentStatus}
+      </span>
       {rects.map((rect) => {
         if (active.has(rect.id)) return renderBar(rect, false);
         if (leaving.has(rect.id)) return renderBar(rect, true);
@@ -563,7 +587,8 @@ export const MindmapNodeActions = () => {
         ) {
           return null;
         }
-        // A hint only; the buttons carry the state for assistive technology.
+        // A hint only; the buttons and the status above carry the state for
+        // assistive technology.
         return (
           <span
             key={rect.id}

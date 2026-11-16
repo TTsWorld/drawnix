@@ -4,6 +4,14 @@
 // color, --drawnix-canvas the board background of the theme. Tints are the
 // accent mixed into the canvas, so they work on light and dark themes alike.
 .drawnix {
+  .drawnix-node-content-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .drawnix-node-actions-layer {
     @include widget.overlay-layer;
     // Faint on purpose: the node's text is the content, these are a side door.

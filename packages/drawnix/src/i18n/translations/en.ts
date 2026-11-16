@@ -2,6 +2,9 @@ import { Translations } from '../types';
 
 const enTranslations: Translations = {
   'nodeActions.label': "Node actions",
+  'nodeActions.hasNote': "{topic}: has a note",
+  'nodeActions.hasCards': "{topic}: has cards",
+  'nodeActions.hasNoteAndCards': "{topic}: has a note and cards",
   'notes.add': "Add note",
   'notes.open': "Open note",
   'notes.title': "Node note",

@@ -2,6 +2,9 @@ import { Translations } from '../types';
 
 const zhTranslations: Translations = {
   'nodeActions.label': "节点操作",
+  'nodeActions.hasNote': "{topic}：有备注",
+  'nodeActions.hasCards': "{topic}：有卡片",
+  'nodeActions.hasNoteAndCards': "{topic}：有备注和卡片",
   'notes.add': "添加备注",
   'notes.open': "打开备注",
   'notes.title': "节点备注",

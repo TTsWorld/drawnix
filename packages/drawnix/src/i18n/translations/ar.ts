@@ -2,6 +2,9 @@ import { Translations } from '../types';
 
 const arTranslations: Translations = {
   'nodeActions.label': "إجراءات العقدة",
+  'nodeActions.hasNote': "{topic}: يحتوي على ملاحظة",
+  'nodeActions.hasCards': "{topic}: يحتوي على بطاقات",
+  'nodeActions.hasNoteAndCards': "{topic}: يحتوي على ملاحظة وبطاقات",
   'notes.add': "إضافة ملاحظة",
   'notes.open': "فتح الملاحظة",
   'notes.title': "ملاحظة العقدة",

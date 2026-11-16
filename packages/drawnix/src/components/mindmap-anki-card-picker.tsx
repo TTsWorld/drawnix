@@ -193,6 +193,8 @@ export const AnkiCardPicker = ({
                 </button>
                 <button
                   type="button"
+                  // Only menu items may sit in a menu.
+                  role="menuitem"
                   className="drawnix-anki-menu-delete"
                   aria-label={item.deleteLabel}
                   title={item.deleteLabel}
