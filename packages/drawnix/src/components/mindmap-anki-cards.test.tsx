@@ -747,6 +747,27 @@ describe('Anki card panel layout and images', () => {
       expect(currentLabel()).toBe('卡片 1 · Q1');
     });
 
+    it('deletes one card per key press, ignoring auto-repeat while held', async () => {
+      const { editor } = await threeCards();
+      await act(async () => {
+        fireEvent.keyDown(trigger(), { key: 'ArrowDown' });
+      });
+      const press = (repeat: boolean) =>
+        act(async () => {
+          fireEvent.keyDown(document.activeElement as Element, {
+            key: 'Delete',
+            repeat,
+          });
+        });
+      await press(false);
+      await press(true);
+      await press(true);
+      expect(ids(editor)).toEqual(['c2', 'c3']);
+      expect(document.activeElement?.textContent).toBe('卡片 1 · Q2');
+      await press(false);
+      expect(ids(editor)).toEqual(['c3']);
+    });
+
     it('keeps the delete buttons out of the Tab order but labelled', async () => {
       await threeCards();
       await openMenu();

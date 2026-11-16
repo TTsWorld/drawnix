@@ -121,6 +121,8 @@ export const AnkiCardPicker = ({
       case 'Delete':
       case 'Backspace':
         event.preventDefault();
+        // Focus moves to the next card; holding the key must not delete it too.
+        if (event.repeat) return;
         return deleteAt(active);
       case 'Escape':
         // Close the menu, not the panel.
