@@ -119,7 +119,60 @@ export function parseDrawnixDocument(content: string): DrawnixDocument {
       'The document is not a native Drawnix document.'
     );
   }
+  const invalid = findInvalidElement(value.elements as unknown[], false);
+  if (invalid) {
+    throw mindmapError(
+      'MINDMAP_INVALID_DOCUMENT',
+      `The document has an invalid element: ${invalid}.`
+    );
+  }
   return value as DrawnixDocument;
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+/** A Slate node: text, or an element whose children are Slate nodes. */
+function isSlateNode(value: unknown, depth = 0): boolean {
+  if (!isObject(value) || depth > 32) return false;
+  if (typeof value.text === 'string') return true;
+  return (
+    Array.isArray(value.children) &&
+    value.children.every((child) => isSlateNode(child, depth + 1))
+  );
+}
+
+/**
+ * Checks what readers and Plait rely on: every element is an object with a
+ * string ID; children are arrays; mind-map nodes (roots and anything Plait
+ * treats as a mind element inside them) have a Slate topic. Returns a short
+ * description of the first problem, or null.
+ */
+function findInvalidElement(elements: unknown[], inMind: boolean): string | null {
+  for (const element of elements) {
+    if (!isObject(element)) return 'not an object';
+    if (typeof element.id !== 'string' || !element.id) return 'missing id';
+    const isMindNode =
+      element.type === 'mindmap' ||
+      element.type === 'mind_child' ||
+      (inMind && isObject(element.data) && !!element.data.topic);
+    if (isMindNode) {
+      if (!isObject(element.data) || !isSlateNode(element.data.topic)) {
+        return `mind-map node ${element.id} has no valid topic`;
+      }
+    }
+    if (element.children !== undefined) {
+      if (!Array.isArray(element.children)) {
+        return `children of ${element.id} are not a list`;
+      }
+      const problem = findInvalidElement(
+        element.children,
+        inMind || isMindNode
+      );
+      if (problem) return problem;
+    }
+  }
+  return null;
 }
 
 export function serializeDrawnixBoard(board: PlaitBoard): string {
@@ -166,6 +219,46 @@ function requireMindElement(board: PlaitBoard, id: string): MindElement {
   return element;
 }
 
+const OPERATION_FIELDS: Record<MindmapOperation['type'], string[]> = {
+  populate_empty: ['markdown'],
+  insert_child: ['parentId', 'topic'],
+  insert_sibling: ['nodeId', 'topic'],
+  set_topic: ['nodeId', 'topic'],
+  set_note: ['nodeId', 'note'],
+};
+
+/** Operations usually come from Agent JSON: check types before use. */
+function validateOperationShapes(operations: unknown): void {
+  if (!Array.isArray(operations)) {
+    throw mindmapError(
+      'MINDMAP_INVALID_OPERATION',
+      'Mind-map operations must be a list.'
+    );
+  }
+  for (const operation of operations) {
+    const type = isObject(operation) ? operation.type : undefined;
+    const fields =
+      typeof type === 'string' &&
+      Object.prototype.hasOwnProperty.call(OPERATION_FIELDS, type)
+        ? OPERATION_FIELDS[type as MindmapOperation['type']]
+        : null;
+    if (!fields) {
+      throw mindmapError(
+        'MINDMAP_INVALID_OPERATION',
+        `Unknown mind-map operation type: ${String(type)}.`
+      );
+    }
+    for (const field of fields) {
+      if (typeof (operation as Record<string, unknown>)[field] !== 'string') {
+        throw mindmapError(
+          'MINDMAP_INVALID_OPERATION',
+          `${String(type)} needs a text ${field}.`
+        );
+      }
+    }
+  }
+}
+
 function validateIncrementalOperations(
   board: PlaitBoard,
   operations: MindmapOperation[]
@@ -192,14 +285,7 @@ function validateIncrementalOperations(
         'A summary node cannot have a sibling.'
       );
     }
-    if (operation.type === 'set_note') {
-      if (typeof operation.note !== 'string') {
-        throw mindmapError(
-          'MINDMAP_INVALID_OPERATION',
-          'Mind-map notes must be text.'
-        );
-      }
-    } else if (!operation.topic.trim()) {
+    if (operation.type !== 'set_note' && !operation.topic.trim()) {
       throw mindmapError(
         'MINDMAP_INVALID_OPERATION',
         'Mind-map topics cannot be empty.'
@@ -217,8 +303,11 @@ export function createMindmapDocument(markdown: string): DrawnixDocument {
     );
   }
   const lines = trimmedMarkdown.split(/\r?\n/);
-  if (!lines.some((line) => /^\s{0,3}#{1,6}\s+\S/.test(line))) {
-    const first = lines[0]!.trim();
+  const heading = /^\s{0,3}(#{1,6})\s+\S/;
+  // A first line that is not a heading is the root topic, also when headings
+  // follow: `Root\n## A` puts A under Root.
+  if (!heading.test(lines[0])) {
+    const first = lines[0].trim();
     const rootTopic =
       first.match(/^(?:[-+*]|\d+[.)])\s+(.+)$/)?.[1]?.trim() ?? first;
     if (
@@ -233,6 +322,17 @@ export function createMindmapDocument(markdown: string): DrawnixDocument {
       );
     }
     lines[0] = `# ${rootTopic}`;
+    // Headings that follow go below the root: `#` becomes `##`.
+    if (lines.slice(1).some((line) => heading.exec(line)?.[1] === '#')) {
+      let fence = false;
+      for (let i = 1; i < lines.length; i++) {
+        if (/^\s{0,3}(```|~~~)/.test(lines[i])) fence = !fence;
+        const level = !fence && heading.exec(lines[i])?.[1];
+        if (level && level.length < 6) {
+          lines[i] = lines[i].replace('#', '##');
+        }
+      }
+    }
   }
 
   let mind: MindElement;
@@ -258,6 +358,7 @@ export function applyMindmapOperations(
   board: PlaitBoard,
   operations: MindmapOperation[]
 ): void {
+  validateOperationShapes(operations);
   if (operations.length < 1 || operations.length > 50) {
     throw mindmapError(
       'MINDMAP_INVALID_OPERATION',

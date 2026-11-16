@@ -9,7 +9,14 @@ import {
 } from '@plait/core';
 import { createMindElement, MindElement, MindTransforms } from '@plait/mind';
 import { AbstractNode, MindLayoutType } from '@plait/layouts';
-import { createDrawnixEditor, parseDrawnixDocument } from './editor';
+import {
+  createDrawnixEditor,
+  createMindmapDocument,
+  getMindmapOutline,
+  type MindmapNode,
+  type MindmapOperation,
+  parseDrawnixDocument,
+} from './editor';
 
 function setup() {
   const board = createTestingBoard([withHistory], []);
@@ -284,5 +291,104 @@ describe('nodes in collapsed branches', () => {
       ])
     ).toThrow();
     expect(JSON.stringify(board.children)).toBe(before);
+  });
+});
+
+describe('editor input checks', () => {
+  const code = (fn: () => unknown) => {
+    try {
+      fn();
+    } catch (error) {
+      return (error as { code?: string }).code;
+    }
+    return undefined;
+  };
+  const native = (elements: unknown) =>
+    JSON.stringify({
+      type: 'drawnix',
+      version: 1,
+      source: 'web',
+      elements,
+      viewport: { zoom: 1 },
+    });
+
+  it('rejects documents whose nodes readers cannot use', () => {
+    const valid = createMindmapDocument('# R\n## A').elements[0];
+    expect(code(() => parseDrawnixDocument(native([valid])))).toBeUndefined();
+    const child = (valid.children as unknown[])[0] as Record<string, unknown>;
+    const broken: unknown[] = [
+      [null],
+      [{ ...valid, id: 5 }],
+      [{ ...valid, data: {} }],
+      [{ ...valid, data: { topic: { children: [null] } } }],
+      [{ ...valid, children: [null] }],
+      [{ ...valid, children: [{ ...child, data: { topic: 'text' } }] }],
+      [{ ...valid, children: [{ id: 'c', type: 'mind_child' }] }],
+      [{ ...valid, children: {} }],
+    ];
+    for (const elements of broken) {
+      const parse = () => {
+        const document = parseDrawnixDocument(native(elements));
+        // What used to fail later, with a plain TypeError:
+        createDrawnixEditor(
+          createTestingBoard([], document.elements)
+        ).readMindmap();
+      };
+      expect(code(parse)).toBe('MINDMAP_INVALID_DOCUMENT');
+    }
+  });
+
+  it('rejects operations with missing or non-text fields and unknown types', () => {
+    const { editor, id } = setup();
+    const bad: unknown[] = [
+      { type: 'set_topic', nodeId: id, topic: 5 },
+      { type: 'set_topic', nodeId: id },
+      { type: 'insert_child', parentId: id, topic: null },
+      { type: 'insert_sibling', nodeId: 7, topic: 'x' },
+      { type: 'set_note', nodeId: id, note: ['x'] },
+      { type: 'delete_node', nodeId: id },
+      { type: 'toString', nodeId: id, topic: 'x' },
+      null,
+    ];
+    for (const operation of bad) {
+      expect(
+        code(() =>
+          editor.updateMindmap([operation] as unknown as MindmapOperation[])
+        )
+      ).toBe('MINDMAP_INVALID_OPERATION');
+    }
+    expect(
+      code(() =>
+        editor.updateMindmap('x' as unknown as MindmapOperation[])
+      )
+    ).toBe('MINDMAP_INVALID_OPERATION');
+    expect(
+      code(() =>
+        createDrawnixEditor(createTestingBoard([withHistory], [])).updateMindmap([
+          { type: 'populate_empty', markdown: 5 },
+        ] as unknown as MindmapOperation[])
+      )
+    ).toBe('MINDMAP_INVALID_OPERATION');
+    // Nothing was applied.
+    expect(editor.readMindmap()[0].children.map((c) => c.topic)).toEqual([
+      '子节点',
+    ]);
+  });
+
+  it('puts headings after a plain first line under it', () => {
+    const outline = (markdown: string) => {
+      const [root] = getMindmapOutline(createMindmapDocument(markdown).elements);
+      const topics = (node: MindmapNode): unknown =>
+        node.children.length
+          ? { [node.topic]: node.children.map(topics) }
+          : node.topic;
+      return topics(root);
+    };
+    expect(outline('Root\n## A\n## B')).toEqual({ Root: ['A', 'B'] });
+    expect(outline('Root\n# A\n## A1\n# B')).toEqual({
+      Root: [{ A: ['A1'] }, 'B'],
+    });
+    expect(outline('- Root\n- A')).toEqual({ Root: ['A'] });
+    expect(outline('# Root\n## A')).toEqual({ Root: ['A'] });
   });
 });
