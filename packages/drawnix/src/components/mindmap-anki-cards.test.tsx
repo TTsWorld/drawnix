@@ -1025,7 +1025,7 @@ describe('Anki card panel layout and images', () => {
           back: 'A',
           backImages: [
             {
-              id: 'i1',
+              id: '00000000-0000-4000-8000-0000000000a1',
               url: 'data:image/jpeg;base64,AA',
               mimeType: '',
               width: 3,
@@ -1038,7 +1038,7 @@ describe('Anki card panel layout and images', () => {
     expect(screen.getByRole('tab', { name: '背面' }).textContent).toBe('背面1');
     expect(editor.readAnkiCards()[0].cards[0].backImages).toEqual([
       {
-        id: 'i1',
+        id: '00000000-0000-4000-8000-0000000000a1',
         url: 'data:image/jpeg;base64,AA',
         mimeType: 'image/jpeg',
         width: 3,

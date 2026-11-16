@@ -23,14 +23,22 @@ export interface MindmapAnkiCard {
 
 /**
  * An image on one side of a card, stored inline as a data URL like other
- * Drawnix images. `id` never changes and an image is never edited in place,
- * so equal IDs mean equal content (exporters can use it as the media file
- * name).
+ * Drawnix images. The panel never changes an image's `id` or edits an image
+ * in place, so in documents it wrote, equal IDs mean equal content.
+ *
+ * Readers (getAnkiCards, readAnkiCards) only return images whose `id` is
+ * UUID-shaped and whose `url` is a base64 `data:` URL of PNG, JPEG, GIF or
+ * WebP; `mimeType` is taken from the URL. Anything else (external URLs,
+ * SVG, path-like IDs) is skipped and never shown or exported. Documents are
+ * still untrusted input: exporters must not use these values as file paths
+ * without their own checks, and should name media by content (for example a
+ * hash), since an edited document can give different images the same ID.
  */
 export interface MindmapAnkiCardMedia {
   id: string;
-  /** `data:` URL (images added in the panel) or an external URL. */
+  /** `data:image/(png|jpeg|gif|webp);base64,…` */
   url: string;
+  /** From the data URL: `image/png`, `image/jpeg`, `image/gif` or `image/webp`. */
   mimeType: string;
   width: number;
   height: number;
@@ -92,40 +100,46 @@ function isStoredAnkiCard(card: unknown): card is StoredAnkiCard {
   );
 }
 
-function getMimeType(url: string): string {
-  return /^data:([^;,]+)[;,]/.exec(url)?.[1] ?? '';
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const IMAGE_DATA_URL =
+  /^data:(image\/(?:png|jpeg|gif|webp));base64,[A-Za-z0-9+/]+={0,2}$/;
+
+/** Whether an image ID has the UUID shape the panel creates. */
+export function isAnkiCardImageId(id: unknown): id is string {
+  return typeof id === 'string' && UUID.test(id);
 }
 
-/** Reads one side's images, ignoring malformed entries. */
+/**
+ * Reads one side's images, skipping entries that are malformed or not an
+ * inline PNG, JPEG, GIF or WebP with a UUID-shaped ID (see
+ * MindmapAnkiCardMedia), and later entries that repeat an ID.
+ */
 export function getAnkiCardImages(value: unknown): MindmapAnkiCardMedia[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .filter(
-      (image): image is Record<string, unknown> =>
-        !!image &&
-        typeof image === 'object' &&
-        typeof image.id === 'string' &&
-        !!image.id &&
-        typeof image.url === 'string' &&
-        !!image.url
-    )
-    .map((image) => {
-      const url = image.url as string;
-      const number = (value: unknown) =>
-        typeof value === 'number' && Number.isFinite(value) && value > 0
-          ? value
-          : 0;
-      return {
-        id: image.id as string,
-        url,
-        mimeType:
-          typeof image.mimeType === 'string' && image.mimeType
-            ? image.mimeType
-            : getMimeType(url),
-        width: number(image.width),
-        height: number(image.height),
-      };
+  const seen = new Set<string>();
+  const result: MindmapAnkiCardMedia[] = [];
+  const number = (value: unknown) =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0
+      ? value
+      : 0;
+  for (const image of value) {
+    if (!image || typeof image !== 'object') continue;
+    const { id, url } = image as Record<string, unknown>;
+    if (!isAnkiCardImageId(id) || seen.has(id) || typeof url !== 'string') {
+      continue;
+    }
+    const mimeType = IMAGE_DATA_URL.exec(url)?.[1];
+    if (!mimeType) continue;
+    seen.add(id);
+    result.push({
+      id,
+      url,
+      mimeType,
+      width: number((image as Record<string, unknown>).width),
+      height: number((image as Record<string, unknown>).height),
     });
+  }
+  return result;
 }
 
 /** Reads a node's cards, ignoring malformed entries from external edits. */

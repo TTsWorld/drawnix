@@ -66,8 +66,15 @@ GIF and WebP are accepted. Images larger than 1280 px or 300 KiB are scaled
 and re-encoded (PNG, then JPEG) to fit; smaller ones are kept unchanged. An
 image is not added if the document would exceed 7.5 MiB (hosts such as Stair
 reject documents above 8 MiB); the panel shows an error, and a warning above
-6 MiB. An image ID never changes and images are never edited in place, so
-exporters can name media files by image ID.
+6 MiB. Readers (`readAnkiCards()`, `getMindmapAnkiCards()`, the panel) only
+accept images with a UUID-shaped `id` and a base64 `data:image/(png|jpeg|gif|webp)`
+URL, and take `mimeType` from that URL; external URLs, SVG and other entries
+are skipped (not shown, not exported). Documents are still untrusted input:
+exporters must not use any field as a file path without their own checks, and
+should name media files by content (for example a hash), because an edited
+document can give two different images the same ID. The node's own
+`image.url` (from `data.image`) is passed through unchecked and may be an
+external URL.
 
 `id` is a random UUID that never changes, so hosts can use it as the Anki note
 GUID across repeated exports. Copied or duplicated cards always get new IDs

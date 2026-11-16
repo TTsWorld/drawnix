@@ -372,12 +372,59 @@ describe('Anki card IDs on paste', () => {
 });
 
 describe('Anki card images', () => {
-  const image = (id: string) => ({
-    id,
-    url: `data:image/png;base64,${id}`,
+  // Image IDs are UUID-shaped; `name` must be hex.
+  const imageId = (name: string) =>
+    `00000000-0000-4000-8000-${name.padStart(12, '0')}`;
+  const image = (name: string) => ({
+    id: imageId(name),
+    url: 'data:image/png;base64,iVBORw0KGgo=',
     mimeType: 'image/png',
     width: 10,
     height: 5,
+  });
+
+  it('reads only inline PNG, JPEG, GIF and WebP images with UUID-shaped IDs', () => {
+    const { board, editor } = setup();
+    const ok = image('a');
+    setCards(
+      board,
+      [0, 0],
+      [
+        {
+          ...card('a1'),
+          frontImages: [
+            ok,
+            // Path-like or empty IDs could become file names in an exporter.
+            { ...ok, id: '../../evil' },
+            { ...ok, id: '' },
+            // External and local URLs: tracking, SSRF, local files.
+            { ...image('b'), url: 'https://example.com/a.png' },
+            { ...image('c'), url: 'file:///etc/passwd' },
+            // SVG can carry scripts; non-base64 data URLs are not produced.
+            { ...image('d'), url: 'data:image/svg+xml;base64,PHN2Zz4=' },
+            { ...image('e'), url: 'data:image/png,raw' },
+            { ...image('f'), url: 'data:image/png;base64,<script>' },
+            // A repeated ID: only the first counts.
+            { ...ok, url: 'data:image/gif;base64,R0lG' },
+            // The MIME type comes from the URL, not the stored field.
+            {
+              ...image('ab'),
+              url: 'data:image/webp;base64,UklG',
+              mimeType: 'text/html',
+            },
+          ],
+        },
+      ]
+    );
+    const [read] = editor.readAnkiCards()[0].cards;
+    expect(read.frontImages).toEqual([
+      ok,
+      {
+        ...image('ab'),
+        url: 'data:image/webp;base64,UklG',
+        mimeType: 'image/webp',
+      },
+    ]);
   });
 
   it('exports images of both sides and keeps old cards without them', () => {
