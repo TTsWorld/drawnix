@@ -120,6 +120,22 @@ describe('document size limit', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('keeps a refusal when an earlier measurement finishes, until the document changes', async () => {
+    const { board } = await setup();
+    await setNote(board, 'x'.repeat(5 * MiB));
+    // The measurement for this edit is still pending when the paste comes.
+    await setNote(board, 'x'.repeat(5 * MiB + 1));
+    await act(async () => paste(board, 4 * MiB));
+    expect(screen.getByRole('alert').textContent).toMatch(/^未粘贴/);
+    await waitForCheck();
+    await waitForCheck();
+    expect(screen.getByRole('alert').textContent).toMatch(/^未粘贴/);
+    // A later edit replaces it with the current size.
+    await setNote(board, 'x'.repeat(5 * MiB + 2));
+    await waitForCheck();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('reports a document over the limit after changes that are not pastes', async () => {
     const { board } = await setup();
     await setNote(board, 'x'.repeat(6.5 * MiB));

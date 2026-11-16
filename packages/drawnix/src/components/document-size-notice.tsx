@@ -30,15 +30,26 @@ export const DocumentSizeNotice = () => {
   const [refused, setRefused] = useState<number | null>(null);
   const [dismissed, setDismissed] = useState<Level | null>(null);
   const measured = useRef<unknown>(null);
+  // The document when a paste was refused. The refusal stays until the user
+  // closes it or the document changes after it; a measurement already
+  // pending for an earlier edit does not clear it.
+  const refusedOn = useRef<unknown>(null);
 
-  useEffect(() => onFragmentRefused(board, setRefused), [board]);
+  useEffect(
+    () =>
+      onFragmentRefused(board, (projected) => {
+        refusedOn.current = board.children;
+        setRefused(projected);
+      }),
+    [board]
+  );
 
   useEffect(() => {
     if (measured.current === board.children) return;
     const timer = setTimeout(() => {
       measured.current = board.children;
       setSize(getDocumentSize(board));
-      setRefused(null);
+      if (refusedOn.current !== board.children) setRefused(null);
     }, DOCUMENT_SIZE_CHECK_DELAY);
     return () => clearTimeout(timer);
   }, [board, version]);
@@ -60,8 +71,9 @@ export const DocumentSizeNotice = () => {
     text = t('document.pasteRefused').replace('{size}', formatMiB(refused));
     error = true;
   } else if (level && level !== dismissed) {
-    text = t(level === 'tooLarge' ? 'document.tooLarge' : 'document.large')
-      .replace('{size}', formatMiB(size));
+    text = t(
+      level === 'tooLarge' ? 'document.tooLarge' : 'document.large'
+    ).replace('{size}', formatMiB(size));
     error = level === 'tooLarge';
   }
   if (!text) return null;
