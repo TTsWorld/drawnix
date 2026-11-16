@@ -38,6 +38,10 @@ const enTranslations: Translations = {
   'anki.imagesAdded': "Image added",
   'anki.imageTargetGone': "Image not added: the card was deleted",
   'anki.imageDocumentSwitched': "Image not added: the document was switched",
+  'document.large': "The document is large (about {size}), close to the 8 MiB limit",
+  'document.tooLarge': "The document is about {size}, over the 8 MiB limit, and may not be saved",
+  'document.pasteRefused': "Not pasted: the document would be about {size}, over the 8 MiB limit",
+  'document.dismiss': "Dismiss",
 
   // Toolbar items
   'toolbar.hand': 'Hand — H',

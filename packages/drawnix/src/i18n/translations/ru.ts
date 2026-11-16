@@ -38,6 +38,10 @@ const ruTranslations: Translations = {
   'anki.imagesAdded': "Изображение добавлено",
   'anki.imageTargetGone': "Изображение не добавлено: карточка удалена",
   'anki.imageDocumentSwitched': "Изображение не добавлено: документ был заменён",
+  'document.large': "Документ большой (около {size}), близок к лимиту 8 МиБ",
+  'document.tooLarge': "Документ около {size}, больше лимита 8 МиБ, и может не сохраниться",
+  'document.pasteRefused': "Не вставлено: документ стал бы около {size}, больше лимита 8 МиБ",
+  'document.dismiss': "Закрыть",
 
   // Toolbar items
   'toolbar.hand': 'Рука — H',

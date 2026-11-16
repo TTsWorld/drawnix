@@ -1,0 +1,46 @@
+.drawnix {
+  .drawnix-size-notice {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    z-index: 3;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    max-width: min(560px, calc(100% - 32px));
+    padding: 8px 8px 8px 14px;
+    font-size: 13px;
+    line-height: 18px;
+    color: #7a4500;
+    background: #fff4e5;
+    border: 1px solid #f0c890;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+
+    button {
+      flex: none;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      font-size: 16px;
+      line-height: 1;
+      color: inherit;
+      cursor: pointer;
+      background: none;
+      border: none;
+      border-radius: 4px;
+      &:hover {
+        background: rgb(0 0 0 / 0.06);
+      }
+      &:focus-visible {
+        outline: 2px solid currentColor;
+      }
+    }
+  }
+  .drawnix-size-notice--error {
+    color: #8c1d18;
+    background: #fdecea;
+    border-color: #f2b8b5;
+  }
+}

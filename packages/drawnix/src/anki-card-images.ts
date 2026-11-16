@@ -174,8 +174,22 @@ export async function createAnkiCardImage(
   }
 }
 
+/** UTF-8 length of a string, without encoding it (documents reach MiBs). */
 export function getUtf8Size(text: string): number {
-  return new TextEncoder().encode(text).length;
+  let length = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 0x80) length += 1;
+    else if (code < 0x800) length += 2;
+    else if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+      const next = text.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        length += 4;
+        i++;
+      } else length += 3;
+    } else length += 3;
+  }
+  return length;
 }
 
 /**

@@ -38,6 +38,10 @@ const viTranslations: Translations = {
   'anki.imagesAdded': "Đã thêm ảnh",
   'anki.imageTargetGone': "Chưa thêm ảnh: thẻ đã bị xóa",
   'anki.imageDocumentSwitched': "Chưa thêm ảnh: tài liệu đã được chuyển",
+  'document.large': "Tài liệu đã lớn (khoảng {size}), gần giới hạn 8 MiB",
+  'document.tooLarge': "Tài liệu khoảng {size}, vượt giới hạn 8 MiB và có thể không lưu được",
+  'document.pasteRefused': "Chưa dán: tài liệu sẽ khoảng {size}, vượt giới hạn 8 MiB",
+  'document.dismiss': "Đóng",
 
     // Toolbar items
     'toolbar.hand': 'Kéo — H',

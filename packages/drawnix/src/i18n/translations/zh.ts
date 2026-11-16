@@ -38,6 +38,10 @@ const zhTranslations: Translations = {
   'anki.imagesAdded': "已添加图片",
   'anki.imageTargetGone': "图片未添加：目标卡片已被删除",
   'anki.imageDocumentSwitched': "图片未添加：文档已切换",
+  'document.large': "文档已较大（约 {size}），接近 8 MiB 上限",
+  'document.tooLarge': "文档约 {size}，超过 8 MiB 上限，可能无法保存",
+  'document.pasteRefused': "未粘贴：粘贴后文档约 {size}，会超过 8 MiB 上限",
+  'document.dismiss': "关闭提示",
 
   // Toolbar items
   'toolbar.hand': '手形工具 — H',

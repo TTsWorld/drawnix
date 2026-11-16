@@ -66,7 +66,11 @@ GIF and WebP are accepted. Images larger than 1280 px or 300 KiB are scaled
 and re-encoded (PNG, then JPEG) to fit; smaller ones are kept unchanged. An
 image is not added if the document would exceed 7.5 MiB (hosts such as Stair
 reject documents above 8 MiB); the panel shows an error, and a warning above
-6 MiB. Readers (`readAnkiCards()`, `getMindmapAnkiCards()`, the panel) only
+6 MiB. The same limit applies to the whole editor: a paste or duplicate that
+would take the document past 8 MiB is refused with a notice, and after any
+other change (redo, Agent commands, images on the board) a notice at the
+bottom of the editor reports a document above 6 MiB or over 8 MiB. Those
+changes are not refused, so hosts must still handle a save that is too large. Readers (`readAnkiCards()`, `getMindmapAnkiCards()`, the panel) only
 accept images with a UUID-shaped `id` and a base64 `data:image/(png|jpeg|gif|webp)`
 URL, and take `mimeType` from that URL; external URLs, SVG and other entries
 are skipped (not shown, not exported). Documents are still untrusted input:

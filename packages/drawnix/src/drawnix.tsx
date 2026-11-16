@@ -46,6 +46,8 @@ import { MindmapNotes } from './components/mindmap-notes';
 import { MindmapAnkiCards } from './components/mindmap-anki-cards';
 import { MindmapNodeActions } from './components/mindmap-node-actions';
 import { withAnkiCards } from './plugins/with-anki-cards';
+import { withDocumentSizeLimit } from './plugins/with-document-size-limit';
+import { DocumentSizeNotice } from './components/document-size-notice';
 import {
   syncDocumentSwap,
   withDocumentSwap,
@@ -121,6 +123,7 @@ export const Drawnix: React.FC<DrawnixProps> = ({
     buildPencilPlugin(updateAppState),
     buildTextLinkPlugin(updateAppState),
     withAnkiCards,
+    withDocumentSizeLimit,
     // Last: checks for a swapped document before every other plugin.
     withDocumentSwap,
   ];
@@ -211,6 +214,7 @@ export const Drawnix: React.FC<DrawnixProps> = ({
             <MindmapNodeActions />
             <MindmapNotes />
             <MindmapAnkiCards />
+            <DocumentSizeNotice />
             <ClosePencilToolbar></ClosePencilToolbar>
             <TTDDialog container={containerRef.current}></TTDDialog>
             <CleanConfirm container={containerRef.current}></CleanConfirm>

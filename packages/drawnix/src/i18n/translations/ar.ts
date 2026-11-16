@@ -38,6 +38,10 @@ const arTranslations: Translations = {
   'anki.imagesAdded': "تمت إضافة الصورة",
   'anki.imageTargetGone': "لم تتم إضافة الصورة: تم حذف البطاقة",
   'anki.imageDocumentSwitched': "لم تتم إضافة الصورة: تم تبديل المستند",
+  'document.large': "المستند كبير (حوالي {size})، قريب من حد 8 ميبيبايت",
+  'document.tooLarge': "حجم المستند حوالي {size}، أكبر من حد 8 ميبيبايت، وقد لا يتم حفظه",
+  'document.pasteRefused': "لم يتم اللصق: سيصبح المستند حوالي {size}، أكبر من حد 8 ميبيبايت",
+  'document.dismiss': "إغلاق",
 
     // Toolbar items
     "toolbar.hand": "اليد — H",
