@@ -3,10 +3,15 @@ import { act, cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   addSelectedElement,
+  BoardTransforms,
   clearSelectedElement,
   PlaitBoard,
   type PlaitElement,
+  PlaitPointerType,
 } from '@plait/core';
+import { BasicShapes } from '@plait/draw';
+import { MindPointerType } from '@plait/mind';
+import { FreehandShape } from '../plugins/freehand/type';
 import { createMindmapDocument } from '../editor';
 import { MindmapAnkiCards } from './mindmap-anki-cards';
 import { MindmapNotes } from './mindmap-notes';
@@ -121,7 +126,25 @@ describe('node action buttons', () => {
     });
     expect(bars()).toHaveLength(0);
 
+    // Moving on over the blank board does not keep the buttons (Codex review 8).
     await pointer(host, 'pointermove', { clientX: 150, clientY: 120 });
+    for (let i = 0; i < 4; i++) {
+      await pointer(host, 'pointermove', { clientX: 400 + i, clientY: 400 });
+      await act(async () => {
+        vi.advanceTimersByTime(60);
+      });
+    }
+    expect(bars()).toHaveLength(0);
+    // Coming back before the delay ends keeps them.
+    await pointer(host, 'pointermove', { clientX: 150, clientY: 120 });
+    await pointer(host, 'pointermove', { clientX: 400, clientY: 400 });
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+    await pointer(host, 'pointermove', { clientX: 150, clientY: 120 });
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
     expect(bars()).toHaveLength(1);
     await pointer(host, 'pointerleave');
     await act(async () => {
@@ -211,6 +234,35 @@ describe('node action buttons', () => {
       fireEvent.click(nodeAction('Child', '添加备注'));
     });
     expect(screen.queryByRole('complementary')).toBeNull();
+  });
+
+  it('shows no buttons with drawing, shape or hand tools (Codex review 8)', async () => {
+    const { board, host, id } = await setup();
+    await selectMindNode(board, id);
+    await act(async () => {
+      fireEvent.click(nodeAction('Original', '打开备注'));
+    });
+    expect(bars()).toHaveLength(1);
+    for (const tool of [
+      FreehandShape.feltTipPen,
+      PlaitPointerType.hand,
+      BasicShapes.rectangle,
+      MindPointerType.mind,
+    ]) {
+      await act(async () => {
+        BoardTransforms.updatePointerType(board, tool);
+        board.afterChange();
+      });
+      // Not for the selection, the hovered node or the open panel's node.
+      expect(bars()).toHaveLength(0);
+      await pointer(host, 'pointermove', { clientX: 150, clientY: 120 });
+      expect(bars()).toHaveLength(0);
+    }
+    await act(async () => {
+      BoardTransforms.updatePointerType(board, PlaitPointerType.selection);
+      board.afterChange();
+    });
+    expect(bars()).toHaveLength(1);
   });
 
   it('shows no buttons in read-only mode, keeping the resting dot', async () => {

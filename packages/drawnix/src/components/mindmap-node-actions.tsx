@@ -8,6 +8,7 @@ import {
   ATTACHED_ELEMENT_CLASS_NAME,
   getSelectedElements,
   PlaitBoard,
+  PlaitPointerType,
 } from '@plait/core';
 import { MindElement } from '@plait/mind';
 import classNames from 'classnames';
@@ -131,6 +132,13 @@ export function hitNodeRect(
   return null;
 }
 
+/**
+ * Buttons belong to the selection tool: with a pen, shape or hand tool they
+ * would catch the press that starts a stroke or a pan.
+ */
+const isSelecting = (board: PlaitBoard) =>
+  PlaitBoard.isPointer(board, PlaitPointerType.selection);
+
 const isTextField = (target: EventTarget | null) =>
   target instanceof Element &&
   !!target.closest('input, textarea, select, [contenteditable="true"]');
@@ -152,6 +160,8 @@ export const MindmapNodeActions = () => {
   });
 
   const readonly = PlaitBoard.isReadonly(board);
+  // The tool switch updates app state, which renders this again.
+  const selecting = isSelecting(board);
   const zoom = board.viewport?.zoom ?? 1;
   const size = getNodeActionSize(zoom);
   const overlap = getNodeActionEdgeOverlap(zoom);
@@ -177,21 +187,35 @@ export const MindmapNodeActions = () => {
     const host = container.closest<HTMLElement>('.drawnix');
     if (!host) return;
     let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+    const cancelLeave = () => {
+      clearTimeout(leaveTimer);
+      leaveTimer = undefined;
+    };
     const inBar = (target: EventTarget | null) =>
       target instanceof Node &&
       [...bars.current.values()].some((bar) => bar.contains(target));
     const setHovered = (id: string | null) => {
-      clearTimeout(leaveTimer);
       if (id || !latest.current.hoveredId) {
+        cancelLeave();
         setHoveredId(id);
         return;
       }
-      leaveTimer = setTimeout(() => setHoveredId(null), HOVER_LEAVE_DELAY);
+      // Further moves outside must not push the timer back.
+      if (leaveTimer !== undefined) return;
+      leaveTimer = setTimeout(() => {
+        leaveTimer = undefined;
+        setHoveredId(null);
+      }, HOVER_LEAVE_DELAY);
     };
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerType === 'touch') return;
+      if (!isSelecting(board)) {
+        cancelLeave();
+        setHoveredId(null);
+        return;
+      }
       if (inBar(event.target)) {
-        clearTimeout(leaveTimer);
+        cancelLeave();
         return;
       }
       // Panels and toolbars cover the board; only the board itself hovers nodes.
@@ -261,7 +285,7 @@ export const MindmapNodeActions = () => {
     window.addEventListener('pointerup', onPointerUp, true);
     window.addEventListener('pointercancel', onPointerUp, true);
     return () => {
-      clearTimeout(leaveTimer);
+      cancelLeave();
       host.removeEventListener('pointermove', onPointerMove, true);
       host.removeEventListener('pointerleave', onPointerLeave);
       host.removeEventListener('pointerdown', onPointerDown, true);
@@ -273,7 +297,7 @@ export const MindmapNodeActions = () => {
 
   // The open panel's node keeps its buttons so a second press closes it.
   const active = new Set<string>();
-  if (!readonly) {
+  if (!readonly && selecting) {
     if (openId) active.add(openId);
     if (!pressing) {
       if (selectedId) active.add(selectedId);
