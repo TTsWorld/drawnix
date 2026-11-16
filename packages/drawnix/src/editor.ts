@@ -3,6 +3,7 @@
 import {
   fakeNodeWeakMap,
   findElements,
+  Path,
   PlaitHistoryBoard,
   PlaitNode,
   Transforms,
@@ -15,7 +16,9 @@ import { buildText } from '@plait/common';
 import {
   createMindElement,
   findNewChildNodePath,
-  findNewSiblingNodePath,
+  insertElementHandleAbstract,
+  insertElementHandleRightNodeCount,
+  isInRightBranchOfStandardLayout,
   MindElement,
   MindTransforms,
   PlaitMind,
@@ -180,6 +183,17 @@ function validateIncrementalOperations(
         'A root mind-map node cannot have a sibling.'
       );
     }
+    // Summary nodes are mind elements with a start and end (AbstractNode).
+    if (
+      operation.type === 'insert_sibling' &&
+      typeof element['start'] === 'number' &&
+      typeof element['end'] === 'number'
+    ) {
+      throw mindmapError(
+        'MINDMAP_INVALID_OPERATION',
+        'A summary node cannot have a sibling.'
+      );
+    }
     if (operation.type === 'set_note') {
       if (typeof operation.note !== 'string') {
         throw mindmapError(
@@ -305,10 +319,27 @@ export function applyMindmapOperations(
           continue;
         }
 
-        const path =
-          operation.type === 'insert_child'
-            ? findNewChildNodePath(board, element)
-            : findNewSiblingNodePath(board, element);
+        let path: number[];
+        if (operation.type === 'insert_child') {
+          path = findNewChildNodePath(board, element);
+        } else {
+          // Like MindTransforms.insertSiblingNode, without selecting the new
+          // node or starting topic editing: a summary covering the node also
+          // covers the new sibling, and a sibling on the right side of a
+          // standard layout stays on the right.
+          const nodePath = PlaitBoard.findPath(board, element);
+          path = Path.next(nodePath);
+          if (isInRightBranchOfStandardLayout(element)) {
+            MindTransforms.setRightNodeCountByRefs(
+              board,
+              insertElementHandleRightNodeCount(board, nodePath.slice(0, 1), 1)
+            );
+          }
+          MindTransforms.setAbstractsByRefs(
+            board,
+            insertElementHandleAbstract(board, path)
+          );
+        }
         MindTransforms.insertNodes(
           board,
           [createMindElement(operation.topic, {})],

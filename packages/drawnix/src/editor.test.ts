@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { createTestingBoard, fakeNodeWeakMap, withHistory } from '@plait/core';
-import { MindElement, MindTransforms } from '@plait/mind';
+import {
+  createTestingBoard,
+  fakeNodeWeakMap,
+  PlaitHistoryBoard,
+  Transforms,
+  withHistory,
+} from '@plait/core';
+import { createMindElement, MindElement, MindTransforms } from '@plait/mind';
+import { AbstractNode, MindLayoutType } from '@plait/layouts';
 import { createDrawnixEditor, parseDrawnixDocument } from './editor';
 
 function setup() {
@@ -101,5 +108,81 @@ describe('independent mind-map notes', () => {
       ])
     ).toThrow();
     expect(editor.serialize()).toBe(before);
+  });
+});
+
+describe('inserting siblings', () => {
+  function children(board: ReturnType<typeof setup>['board']) {
+    return (board.children[0] as MindElement).children;
+  }
+
+  it('extends a summary that covers the node the sibling is inserted after', () => {
+    const board = createTestingBoard([withHistory], []);
+    const editor = createDrawnixEditor(board);
+    editor.updateMindmap([
+      { type: 'populate_empty', markdown: '# Root\n## A\n## B\n## C' },
+    ]);
+    fakeNodeWeakMap(board);
+    PlaitHistoryBoard.withNewBatch(board, () => {
+      Transforms.insertNode(
+        board,
+        { ...createMindElement('Summary', {}), start: 0, end: 1 },
+        [0, 3]
+      );
+    });
+    const [a, b] = editor.readMindmap()[0].children;
+    const undos = board.history.undos.length;
+    editor.updateMindmap([
+      { type: 'insert_sibling', nodeId: a.id, topic: 'A2' },
+    ]);
+    const nodes = children(board);
+    const summary = nodes.find((node) => AbstractNode.isAbstract(node));
+    expect(summary).toMatchObject({ start: 0, end: 2 });
+    expect(nodes.slice(0, 3).map((node) => node.id)).toEqual([
+      a.id,
+      expect.any(String),
+      b.id,
+    ]);
+    expect(() =>
+      editor.updateMindmap([
+        { type: 'insert_sibling', nodeId: summary!.id, topic: 'No' },
+      ])
+    ).toThrow('A summary node cannot have a sibling.');
+    // One undo step removes the node and restores the summary.
+    expect(board.history.undos).toHaveLength(undos + 1);
+    board.undo();
+    expect(
+      children(board).find((node) => AbstractNode.isAbstract(node))
+    ).toMatchObject({ start: 0, end: 1 });
+  });
+
+  it('keeps right-side nodes on the right in a standard layout', () => {
+    const board = createTestingBoard([withHistory], []);
+    const editor = createDrawnixEditor(board);
+    editor.updateMindmap([
+      { type: 'populate_empty', markdown: '# Root\n## R1\n## R2\n## L1' },
+    ]);
+    fakeNodeWeakMap(board);
+    PlaitHistoryBoard.withNewBatch(board, () => {
+      Transforms.setNode(
+        board,
+        { layout: MindLayoutType.standard, rightNodeCount: 2 },
+        [0]
+      );
+    });
+    const [r1, r2, l1] = editor.readMindmap()[0].children;
+    editor.updateMindmap([
+      { type: 'insert_sibling', nodeId: r1.id, topic: 'R1b' },
+    ]);
+    const root = board.children[0] as MindElement;
+    expect(root.rightNodeCount).toBe(3);
+    const right = root.children.slice(0, root.rightNodeCount);
+    expect(right.map((node) => node.id)).toContain(r2.id);
+    expect(root.children[3].id).toBe(l1.id);
+    // A sibling of a left-side node does not change the right side.
+    editor.updateMindmap([
+      { type: 'insert_sibling', nodeId: l1.id, topic: 'L2' },
+    ]);
+    expect((board.children[0] as MindElement).rightNodeCount).toBe(3);
   });
 });
