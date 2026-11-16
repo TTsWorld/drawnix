@@ -1,4 +1,6 @@
 .popup-toolbar {
+    // Above the node buttons and content dots, which come later in the editor.
+    z-index: 1;
     .property-button {
         height: var(--lg-button-size);
         width: var(--lg-button-size);
