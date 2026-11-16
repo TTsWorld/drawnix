@@ -860,6 +860,23 @@ describe('Anki card panel layout and images', () => {
     expect(field('卡片 2 背面').value).toBe('A2');
   });
 
+  it('focuses fields and tabs of cards whose IDs need CSS escaping', async () => {
+    // IDs come from documents; quotes or backslashes must not break selectors.
+    for (const id of ['a"b', 'a\\b', 'a\nb]']) {
+      cleanup();
+      await setup({ cards: [{ id, front: 'Q', back: 'A' }] });
+      const front = screen.getByRole('tab', { name: '正面' });
+      await act(async () => {
+        fireEvent.keyDown(front, { key: 'ArrowRight' });
+      });
+      expect(document.activeElement).toBe(
+        screen.getByRole('tab', { name: '背面' })
+      );
+      await addCard();
+      expect(document.activeElement).toBe(field('卡片 2 正面'));
+    }
+  });
+
   it('keeps showing a neighbour after the selected card is undone away', async () => {
     const { board } = await twoCards();
     await addCard();

@@ -76,8 +76,17 @@ export function setAnkiImageCodecForTesting(codec?: AnkiImageCodec) {
 
 const fieldId = (cardId: string, field: string) =>
   `drawnix-anki-${cardId}-${field}`;
+/** Escapes text for a double-quoted CSS string (card IDs come from documents). */
+const cssString = (text: string) =>
+  text
+    .replace(/[\\"]/g, '\\$&')
+    .replace(/\n/g, '\\a ')
+    .replace(/\r/g, '\\d ')
+    .replace(/\f/g, '\\c ')
+    .replace(/\0/g, '\ufffd');
+// Queried inside the panel: two editors can show the same document.
 const fieldSelector = (cardId: string, field: string) =>
-  `[id="${fieldId(cardId, field)}"]`;
+  `[id="${cssString(fieldId(cardId, field))}"]`;
 
 const normalizeText = (text: string) => text;
 const normalizeTags = (text: string) => parseAnkiTags(text).join(' ');
@@ -639,7 +648,7 @@ export const MindmapAnkiCards = () => {
               event.preventDefault();
               const next = side === 'front' ? 'back' : 'front';
               select(current.id, next);
-              setPendingFocus(`[id="${fieldId(current.id, `tab-${next}`)}"]`);
+              setPendingFocus(fieldSelector(current.id, `tab-${next}`));
             }}
           >
             {SIDES.map((value) => {
