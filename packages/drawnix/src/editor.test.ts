@@ -175,7 +175,7 @@ describe('inserting siblings', () => {
     ]);
     expect(() =>
       editor.updateMindmap([
-        { type: 'insert_sibling', nodeId: summary!.id, topic: 'No' },
+        { type: 'insert_sibling', nodeId: String(summary?.id), topic: 'No' },
       ])
     ).toThrow('A summary node cannot have a sibling.');
     // One undo step removes the node and restores the summary.
