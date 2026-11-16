@@ -82,6 +82,8 @@ describe('document size limit on paste', () => {
     const undos = [...board.history.undos];
     pasteOnRoot(board, { text: 'y'.repeat(8192) });
     expect(serializeDrawnixBoard(board)).toBe(before);
+    // Nothing for the host's onChange to take as an edit.
+    expect(board.operations).toEqual([]);
     expect(board.history.undos).toEqual(undos);
     expect(board.history.redos).toEqual([]);
     expect(refused).toHaveBeenCalledTimes(1);

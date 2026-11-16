@@ -37,6 +37,7 @@ export const withDocumentSizeLimit = (board: PlaitBoard) => {
     const lastBatch = undos[undos.length - 1];
     const lastBatchLength = lastBatch?.length;
     const temporaryRef = getTemporaryRef(board);
+    const operationCount = board.operations.length;
     const applied: PlaitOperation[] = [];
     const { apply } = board;
     board.apply = (operation) => {
@@ -61,6 +62,10 @@ export const withDocumentSizeLimit = (board: PlaitBoard) => {
     });
     history.undos = undos;
     history.redos = redos;
+    // The paste and its rollback cancel out. Keep them out of the pending
+    // change, so the host's onChange does not see an edit and mark the
+    // document modified.
+    board.operations.splice(operationCount);
     if (lastBatch && lastBatchLength !== undefined) {
       lastBatch.length = lastBatchLength;
     }
