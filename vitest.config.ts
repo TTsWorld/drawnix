@@ -5,14 +5,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     server: { deps: { inline: ['@plait-board/react-board', 'roughjs'] } },
-    include: [
-      'packages/drawnix/src/editor.test.ts',
-      'packages/drawnix/src/anki-cards.test.ts',
-      'packages/drawnix/src/anki-card-images.test.ts',
-      'packages/drawnix/src/components/mindmap-notes.test.tsx',
-      'packages/drawnix/src/components/mindmap-anki-cards.test.tsx',
-      'packages/drawnix/src/components/mindmap-node-actions.test.tsx',
-      'packages/drawnix/src/components/toolbar/popup-toolbar/popup-toolbar-placement.test.ts',
-    ],
+    // Every *.test file; jest ignores them (packages/drawnix/jest.config.ts).
+    include: ['packages/drawnix/src/**/*.test.{ts,tsx}'],
   },
 });

@@ -30,7 +30,7 @@ import { MindmapNodeActions } from '../components/mindmap-node-actions';
 /**
  * Callers must mock `toHostPointFromViewBoxPoint` and
  * `toScreenPointFromHostPoint` from '@plait/core' (jsdom has no screen
- * coordinates) and stub `localStorage` and `ResizeObserver`.
+ * coordinates) and stub `ResizeObserver`.
  */
 export async function renderMindmapWidgets(
   elements: PlaitElement[],

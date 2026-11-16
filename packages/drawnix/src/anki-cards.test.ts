@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createTestingBoard,
   fakeNodeWeakMap,
@@ -721,28 +721,6 @@ describe('cut, paste, undo and paste again', () => {
       expect(a.ids()).toHaveLength(2);
       expect(new Set(a.ids()).size).toBe(2);
       expect(a.board.history.undos).toHaveLength(0);
-    });
-  });
-
-  describe('when localStorage cannot be written', () => {
-    beforeEach(() => {
-      vi.stubGlobal('localStorage', {
-        getItem: () => null,
-        setItem: () => {
-          throw new DOMException('Quota exceeded', 'QuotaExceededError');
-        },
-      });
-    });
-    afterEach(() => vi.unstubAllGlobals());
-
-    it('still gives two documents different IDs for the same cut', () => {
-      const a = documentWithCard();
-      const cut = a.cut();
-      const b = documentWithCard('b');
-      const c = documentWithCard('c');
-      b.paste(cut);
-      c.paste(cut);
-      expect(shared(b.ids(), c.ids())).toEqual([]);
     });
   });
 });
