@@ -221,7 +221,10 @@ export const MindmapAnkiCards = () => {
       lastIndex.current.nodeId === node?.id ? lastIndex.current.index : 0;
     index = Math.max(0, Math.min(previous, cards.length - 1));
   }
-  lastIndex.current = { nodeId: node?.id, index };
+  // Written after commit, not during render (React may render twice).
+  useEffect(() => {
+    lastIndex.current = { nodeId: node?.id, index };
+  });
   const current: MindmapAnkiCard | undefined = cards[index];
   const busy = !!current && pendingCards.includes(current.id);
   const side: MindmapAnkiCardSide = ownSelection?.side ?? 'front';

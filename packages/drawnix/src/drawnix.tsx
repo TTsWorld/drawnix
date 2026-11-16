@@ -10,7 +10,7 @@ import {
   ThemeColorMode,
   Viewport,
 } from '@plait/core';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { withGroup } from '@plait/common';
 import { withDraw } from '@plait/draw';
 import { MindThemeColors, withMind } from '@plait/mind';
@@ -46,6 +46,7 @@ import { MindmapNotes } from './components/mindmap-notes';
 import { MindmapAnkiCards } from './components/mindmap-anki-cards';
 import { MindmapNodeActions } from './components/mindmap-node-actions';
 import { withAnkiCards } from './plugins/with-anki-cards';
+import { normalizeAnkiCardIds } from './anki-cards';
 import { withDocumentSizeLimit } from './plugins/with-document-size-limit';
 import { DocumentSizeNotice } from './components/document-size-notice';
 import {
@@ -130,6 +131,12 @@ export const Drawnix: React.FC<DrawnixProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Repair duplicate card IDs before the board renders them, as part of
+  // loading: no operation, so the host is not told the document changed the
+  // moment it opened it. The array identity is kept when nothing is fixed,
+  // so echoing the document back through `value` stays a no-op.
+  const elements = useMemo(() => normalizeAnkiCardIds(value), [value]);
+
   // Wrapper (a child, so its effect ran first) replaces board.children when
   // `value` is a different document. Clear the history now, not only at the
   // next operation.
@@ -155,7 +162,7 @@ export const Drawnix: React.FC<DrawnixProps> = ({
           }}
         >
           <Wrapper
-            value={value}
+            value={elements}
             viewport={viewport}
             theme={theme}
             options={options}
