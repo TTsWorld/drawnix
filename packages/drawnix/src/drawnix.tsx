@@ -40,6 +40,7 @@ import { LinkPopup } from './components/popup/link-popup/link-popup';
 import { I18nProvider } from './i18n';
 import { Tutorial } from './components/tutorial';
 import { LASER_POINTER_CLASS_NAME } from './utils/laser-pointer';
+import { isGlobalKeyForEditor, isKeyInEditor } from './utils/key-scope';
 import { createDrawnixEditor, type DrawnixEditor } from './editor';
 import { MindmapNotes } from './components/mindmap-notes';
 import { MindmapAnkiCards } from './components/mindmap-anki-cards';
@@ -169,9 +170,20 @@ export const Drawnix: React.FC<DrawnixProps> = ({
                 // Multiple embedded editors must not handle each other's shortcuts.
                 const { globalKeyDown, keyDown, keyUp } = board;
                 const ownsEvent = (event: KeyboardEvent) =>
-                  event.target instanceof Node && containerRef.current?.contains(event.target);
+                  isKeyInEditor(containerRef.current, event);
                 board.globalKeyDown = (event) => {
-                  if (ownsEvent(event)) globalKeyDown(event);
+                  const pointerOverBoard =
+                    !!PlaitBoard.getMovingPointInBoard(board) ||
+                    PlaitBoard.isMovingPointInBoard(board);
+                  if (
+                    isGlobalKeyForEditor(
+                      containerRef.current,
+                      event,
+                      pointerOverBoard
+                    )
+                  ) {
+                    globalKeyDown(event);
+                  }
                 };
                 board.keyDown = (event) => {
                   if (ownsEvent(event)) keyDown(event);
