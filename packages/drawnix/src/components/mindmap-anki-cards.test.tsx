@@ -458,6 +458,24 @@ describe('mind-map Anki cards', () => {
     });
   });
 
+  it('stays open for a node whose ancestor is collapsed', async () => {
+    const document = createMindmapDocument('# Original\n## Child');
+    const root = document.elements[0] as PlaitElement;
+    root.isCollapsed = true;
+    const child = root.children[0];
+    child.ankiCards = [{ id: 'c1', front: 'Q', back: 'A' }];
+    const { board, appState } = await renderMindmapWidgets(
+      document.elements,
+      () => ({ openAnkiCardsId: child.id }),
+      <MindmapAnkiCards />
+    );
+    // Like withMind: collapsed nodes are not recursed into for rendering.
+    board.isRecursion = (element) => !element.isCollapsed;
+    await act(async () => board.afterChange());
+    expect(appState.current?.openAnkiCardsId).toBe(child.id);
+    expect(field('卡片 1 正面').value).toBe('Q');
+  });
+
   it('closes with Escape and when the node is deleted', async () => {
     const { board, id } = await setup({
       cards: [{ id: 'c1', front: 'Q', back: 'A' }],

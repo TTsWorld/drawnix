@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createTestingBoard,
+  PlaitBoard,
   fakeNodeWeakMap,
   PlaitHistoryBoard,
   Transforms,
@@ -214,5 +215,74 @@ describe('inserting siblings', () => {
       { type: 'insert_sibling', nodeId: l1.id, topic: 'L2' },
     ]);
     expect((board.children[0] as MindElement).rightNodeCount).toBe(3);
+  });
+});
+
+describe('nodes in collapsed branches', () => {
+  /**
+   * A board whose node A is collapsed. Like withMind, the board does not
+   * recurse into collapsed nodes (their children are not rendered).
+   */
+  function collapsed() {
+    const board = createTestingBoard([withHistory], []);
+    const { isRecursion } = board;
+    board.isRecursion = (element) =>
+      MindElement.isMindElement(board, element) && element.isCollapsed
+        ? false
+        : isRecursion(element);
+    const editor = createDrawnixEditor(board);
+    editor.updateMindmap([
+      { type: 'populate_empty', markdown: '# R\n## A\n### A1' },
+    ]);
+    fakeNodeWeakMap(board);
+    PlaitHistoryBoard.withNewBatch(board, () => {
+      Transforms.setNode(board, { isCollapsed: true }, [0, 0]);
+    });
+    const [a] = editor.readMindmap()[0].children;
+    return { board, editor, a, a1: a.children[0] };
+  }
+  const nodeA = (board: PlaitBoard) =>
+    (board.children[0] as MindElement).children[0];
+
+  it('edits a hidden node by the ID readMindmap returned', () => {
+    const { editor, a1 } = collapsed();
+    editor.updateMindmap([
+      { type: 'set_topic', nodeId: a1.id, topic: 'renamed' },
+      { type: 'set_note', nodeId: a1.id, note: 'note' },
+      { type: 'insert_sibling', nodeId: a1.id, topic: 'A2' },
+      { type: 'insert_child', parentId: a1.id, topic: 'A1a' },
+    ]);
+    const [a] = editor.readMindmap()[0].children;
+    expect(a.children.map((child) => child.topic)).toEqual(['renamed', 'A2']);
+    expect(a.children[0]).toMatchObject({ note: 'note' });
+    expect(a.children[0].children.map((child) => child.topic)).toEqual([
+      'A1a',
+    ]);
+  });
+
+  it('expands a collapsed parent when inserting a child, undone together', () => {
+    const { board, editor, a } = collapsed();
+    editor.updateMindmap([
+      { type: 'insert_child', parentId: a.id, topic: 'A2' },
+    ]);
+    expect(nodeA(board).isCollapsed).toBe(false);
+    expect(
+      editor.readMindmap()[0].children[0].children.map((child) => child.topic)
+    ).toEqual(['A1', 'A2']);
+    board.undo();
+    expect(nodeA(board).isCollapsed).toBe(true);
+    expect(nodeA(board).children).toHaveLength(1);
+  });
+
+  it('keeps the parent collapsed when the batch fails', () => {
+    const { board, editor, a } = collapsed();
+    const before = JSON.stringify(board.children);
+    expect(() =>
+      editor.updateMindmap([
+        { type: 'insert_child', parentId: a.id, topic: 'A2' },
+        { type: 'set_topic', nodeId: 'missing', topic: 'x' },
+      ])
+    ).toThrow();
+    expect(JSON.stringify(board.children)).toBe(before);
   });
 });

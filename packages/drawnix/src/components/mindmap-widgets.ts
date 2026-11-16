@@ -30,6 +30,7 @@ import {
 } from '@plait/mind';
 import { Node } from 'slate';
 import { getAnkiCards } from '../anki-cards';
+import { findElementById } from '../mind-tree';
 import type { DrawnixState } from '../hooks/use-drawnix';
 import { getCanvasColor, getNodeAccent } from './mindmap-node-accent';
 
@@ -48,17 +49,20 @@ export function openMindWidget(
   }));
 }
 
-/** Resolve by ID against the current document: Agent edits can move nodes. */
+/**
+ * Resolve by ID against the current document: Agent edits can move nodes.
+ * Nodes in collapsed branches are found too, so collapsing an ancestor does
+ * not close their panel.
+ */
 export function findMindElement(
   board: PlaitBoard,
   id: string | null | undefined
 ): MindElement | undefined {
   if (!id) return undefined;
-  return findElements(board, {
-    match: (element) =>
-      element.id === id && MindElement.isMindElement(board, element),
-    recursion: () => true,
-  })[0] as MindElement | undefined;
+  const element = findElementById(board.children, id);
+  return element && MindElement.isMindElement(board, element)
+    ? element
+    : undefined;
 }
 
 /**

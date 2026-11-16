@@ -2,7 +2,6 @@
 // See LICENSES/stair-Apache-2.0.txt.
 import {
   fakeNodeWeakMap,
-  findElements,
   Path,
   PlaitHistoryBoard,
   PlaitNode,
@@ -28,6 +27,7 @@ import {
 import { Node, type Element as SlateElement } from 'slate';
 import { parseMarkdownToDrawnix } from '@plait-board/markdown-to-drawnix';
 import { getMindmapAnkiCards, type MindmapAnkiCardNode } from './anki-cards';
+import { findElementById } from './mind-tree';
 
 export {
   getMindmapAnkiCards,
@@ -155,11 +155,8 @@ export function getMindmapOutline(elements: PlaitElement[]): MindmapNode[] {
 }
 
 function requireMindElement(board: PlaitBoard, id: string): MindElement {
-  const element = findElements(board, {
-    match: (candidate) => candidate.id === id,
-    recursion: () => true,
-    isReverse: false,
-  })[0];
+  // Also inside collapsed branches: readMindmap() lists those nodes too.
+  const element = findElementById(board.children, id);
   if (!element || !MindElement.isMindElement(board, element)) {
     throw mindmapError(
       'MINDMAP_NODE_NOT_FOUND',
@@ -322,6 +319,16 @@ export function applyMindmapOperations(
 
         let path: number[];
         if (operation.type === 'insert_child') {
+          // Like MindTransforms.insertChildNode, expand a collapsed parent
+          // so the new child shows. Unlike it, the expansion is part of the
+          // batch: one undo removes the child and collapses the parent again.
+          if (element.isCollapsed) {
+            Transforms.setNode(
+              board,
+              { isCollapsed: false },
+              PlaitBoard.findPath(board, element)
+            );
+          }
           path = findNewChildNodePath(board, element);
         } else {
           // Like MindTransforms.insertSiblingNode, without selecting the new
