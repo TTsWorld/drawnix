@@ -72,12 +72,13 @@ exporters can name media files by image ID.
 `id` is a random UUID that never changes, so hosts can use it as the Anki note
 GUID across repeated exports. Copied or duplicated cards always get new IDs
 when pasted, also into another document, so two cards never share a GUID. Cut
-and paste moves cards and keeps their IDs on the first paste of that cut only;
-pasting the same cut again, in any document, renews them, as does pasting an
-ID that is already on the board. Undoing that first paste frees the cut again
-(pasting again is still the same move), and redo uses it again. Used cuts are
-remembered in `localStorage` (`drawnix-anki-pasted-cuts`, last 100) and in
-memory.
+and paste in the same document moves cards and keeps their IDs, as long as the
+cut is still in that document's undo history and the IDs are not already on
+the board; pasting the same cut again renews them. Pasting a cut into another
+document (another board, window or tab, or after a reload) renews the IDs like
+a copy. A card ID therefore never leaves the document it was made in, so undo
+and redo in either document can never make two documents share a GUID. Nothing
+is stored outside the document for this.
 
 The editor keeps card IDs unique within a document. Duplicates (for example
 from older versions or upstream Drawnix, which copy cards unchanged) are

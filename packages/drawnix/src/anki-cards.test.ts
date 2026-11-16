@@ -182,11 +182,7 @@ describe('Anki card IDs on paste', () => {
     const { board } = setup();
     setCards(board, [0, 0], [card('a1'), card('a2')]);
     const copy = copyNewNode(board.children[0] as MindElement);
-    const pasted = prepareAnkiCardsForPaste(
-      [copy, copy],
-      board.children,
-      new Set()
-    );
+    const pasted = prepareAnkiCardsForPaste([copy, copy], board.children);
     const ids = pasted.flatMap((root) => idsOf([root]));
     expect(ids).toHaveLength(4);
     expect(new Set([...ids, 'a1', 'a2']).size).toBe(6);
@@ -203,11 +199,7 @@ describe('Anki card IDs on paste', () => {
     setCards(source.board, [0, 0], [card('a1')]);
     const copy = copyNewNode(source.board.children[0] as MindElement);
     const target = setup();
-    const [pasted] = prepareAnkiCardsForPaste(
-      [copy],
-      target.board.children,
-      new Set()
-    );
+    const [pasted] = prepareAnkiCardsForPaste([copy], target.board.children);
     const [id] = idsOf([pasted]);
     expect(id).not.toBe('a1');
     expect(getMindmapAnkiCards([pasted])[0].cards[0]).toEqual({
@@ -216,7 +208,7 @@ describe('Anki card IDs on paste', () => {
     });
   });
 
-  it('keeps cut IDs on the first paste only, in any document', () => {
+  it('keeps cut IDs only for cuts accepted as moves', () => {
     const { board } = setup();
     setCards(board, [0, 0], [card('a1')]);
     const [cut] = markAnkiCardsCut(
@@ -226,27 +218,17 @@ describe('Anki card IDs on paste', () => {
     expect(cut).toHaveProperty('ankiCardsCut', 'cut-1');
     fakeNodeWeakMap(board);
     Transforms.removeNode(board, [0]);
-    const pastedCuts = new Set<string>();
+    const isMove = vi.fn((cutId: string) => cutId === 'cut-1');
 
-    // First paste, here into another document: the cards move.
-    const [first] = prepareAnkiCardsForPaste(
-      [cut],
-      setup().board.children,
-      pastedCuts
-    );
-    expect(idsOf([first])).toEqual(['a1']);
-    expect(first).not.toHaveProperty('ankiCardsCut');
-    expect(pastedCuts).toEqual(new Set(['cut-1']));
+    const [moved] = prepareAnkiCardsForPaste([cut], board.children, isMove);
+    expect(idsOf([moved])).toEqual(['a1']);
+    expect(moved).not.toHaveProperty('ankiCardsCut');
+    expect(isMove).toHaveBeenCalledWith('cut-1');
 
-    // Pasting the same cut into a third document that lacks the ID still
-    // renews it, so two documents never share a GUID.
-    const [second] = prepareAnkiCardsForPaste(
-      [cut],
-      setup().board.children,
-      pastedCuts
-    );
-    expect(idsOf([second])).toHaveLength(1);
-    expect(idsOf([second])[0]).not.toBe('a1');
+    // Without the editor's consent (another board), the cut is a copy.
+    const [copied] = prepareAnkiCardsForPaste([cut], setup().board.children);
+    expect(idsOf([copied])).toHaveLength(1);
+    expect(idsOf([copied])[0]).not.toBe('a1');
   });
 
   it('renews cut IDs that are already on the board even on the first paste', () => {
@@ -256,21 +238,19 @@ describe('Anki card IDs on paste', () => {
       [copyNewNode(board.children[0] as MindElement)],
       'cut-2'
     );
-    const [pasted] = prepareAnkiCardsForPaste(cut, board.children, new Set());
+    const [pasted] = prepareAnkiCardsForPaste(cut, board.children, () => true);
     expect(idsOf([pasted])[0]).not.toBe('a1');
   });
 
-  it('keeps the IDs of every node in one cut on its first paste', () => {
+  it('keeps the IDs of every node in a moved cut', () => {
     const element = (id: string, cardId: string) =>
       ({ id, children: [], ankiCards: [card(cardId)] } as PlaitElement);
     const cut = markAnkiCardsCut(
       [element('n1', 'c1'), element('n2', 'c2')],
       'cut-3'
     );
-    const pastedCuts = new Set<string>();
-    const pasted = prepareAnkiCardsForPaste(cut, [], pastedCuts);
+    const pasted = prepareAnkiCardsForPaste(cut, [], () => true);
     expect(pasted.map((e) => getAnkiCards(e)[0].id)).toEqual(['c1', 'c2']);
-    expect(pastedCuts).toEqual(new Set(['cut-3']));
   });
 
   it('only marks cut elements that contain cards', () => {
@@ -293,7 +273,7 @@ describe('Anki card IDs on paste', () => {
       ],
     } as PlaitElement;
     const clipboard = isCut ? markAnkiCardsCut([element]) : [element];
-    const [pasted] = prepareAnkiCardsForPaste(clipboard, [], new Set());
+    const [pasted] = prepareAnkiCardsForPaste(clipboard, [], () => true);
     const [first, second] = pasted.ankiCards;
     expect(first).toEqual({
       ...card('a1'),
@@ -348,7 +328,7 @@ describe('Anki card IDs on paste', () => {
     expect(pastedCard.id).not.toBe('b1');
   });
 
-  it('keeps a cut on its first paste only, across boards', () => {
+  it('renews a cut pasted into another board, also the first time', () => {
     const source = setup();
     setCards(source.board, [0, 1], [card('b1')]);
     const child = (source.board.children[0] as MindElement).children[1];
@@ -363,6 +343,8 @@ describe('Anki card IDs on paste', () => {
       null,
       WritableClipboardOperationType.cut
     );
+    fakeNodeWeakMap(source.board);
+    source.board.deleteFragment([child]);
 
     const pasteInto = () => {
       const target = setup();
@@ -376,8 +358,11 @@ describe('Anki card IDs on paste', () => {
       );
       return getAnkiCards(insertFragment.mock.calls[0][0].elements[0])[0].id;
     };
-    expect(pasteInto()).toBe('b1');
-    expect(pasteInto()).not.toBe('b1');
+    const first = pasteInto();
+    const second = pasteInto();
+    expect(first).not.toBe('b1');
+    expect(second).not.toBe('b1');
+    expect(second).not.toBe(first);
   });
 });
 
@@ -419,8 +404,7 @@ describe('Anki card images', () => {
     setCards(board, [0, 0], [{ ...card('a1'), backImages: [image('b1')] }]);
     const [pasted] = prepareAnkiCardsForPaste(
       [copyNewNode(board.children[0] as MindElement)],
-      board.children,
-      new Set()
+      board.children
     );
     const [copied] = getMindmapAnkiCards([pasted])[0].cards;
     expect(copied.id).not.toBe('a1');
@@ -521,30 +505,24 @@ describe('duplicate card IDs in a document', () => {
 });
 
 describe('cut, paste, undo and paste again', () => {
-  function cutSource() {
-    const source = setup();
-    setCards(source.board, [0, 1], [card('m1')]);
-    const child = (source.board.children[0] as MindElement).children[1];
-    source.board.buildFragment = () => ({
+  /**
+   * A document with one card on its second child, whose cut, delete and
+   * paste go through Plait's clipboard hooks like in the app.
+   */
+  function documentWithCard(cardId = 'm1') {
+    const { board } = setup();
+    setCards(board, [0, 1], [card(cardId)]);
+    board.buildFragment = () => ({
       text: 'x',
       type: WritableClipboardType.elements,
-      elements: [copyNewNode(child)],
+      elements: [copyNewNode((board.children[0] as MindElement).children[1])],
     });
-    withAnkiCards(source.board);
-    const cut = source.board.buildFragment(
-      null,
-      null,
-      WritableClipboardOperationType.cut
-    );
-    fakeNodeWeakMap(source.board);
-    PlaitHistoryBoard.withNewBatch(source.board, () =>
-      Transforms.removeNode(source.board, [0, 1])
-    );
-    return cut?.elements as PlaitElement[];
-  }
-
-  function target() {
-    const { board } = setup();
+    board.deleteFragment = () => {
+      fakeNodeWeakMap(board);
+      PlaitHistoryBoard.withNewBatch(board, () =>
+        Transforms.removeNode(board, [0, 1])
+      );
+    };
     board.insertFragment = (data) => {
       fakeNodeWeakMap(board);
       PlaitHistoryBoard.withNewBatch(board, () => {
@@ -554,6 +532,15 @@ describe('cut, paste, undo and paste again', () => {
       });
     };
     withAnkiCards(board);
+    const cut = () => {
+      const fragment = board.buildFragment(
+        null,
+        null,
+        WritableClipboardOperationType.cut
+      );
+      board.deleteFragment([]);
+      return fragment?.elements as PlaitElement[];
+    };
     const paste = (elements: PlaitElement[]) =>
       board.insertFragment(
         { elements },
@@ -561,163 +548,143 @@ describe('cut, paste, undo and paste again', () => {
         WritableClipboardOperationType.paste
       );
     const ids = () => [...collectAnkiCardIds(board.children, new Set())];
-    return { board, paste, ids };
+    const edit = (front: string) => {
+      const cards = getAnkiCards(
+        (board.children[0] as MindElement).children[1]
+      );
+      setCards(board, [0, 1], [{ ...cards[0], front }]);
+    };
+    const removeLast = () => {
+      fakeNodeWeakMap(board);
+      PlaitHistoryBoard.withNewBatch(board, () =>
+        Transforms.removeNode(board, [board.children.length - 1])
+      );
+    };
+    return { board, cut, paste, ids, edit, removeLast };
   }
 
-  it('keeps the IDs again after the first paste is undone, and redo uses the cut', () => {
-    const cut = cutSource();
-    const b = target();
-    b.paste(cut);
-    expect(b.ids()).toEqual(['m1']);
-    b.board.undo();
-    expect(b.ids()).toEqual([]);
-    b.paste(cut);
-    expect(b.ids()).toEqual(['m1']);
+  const shared = (a: string[], b: string[]) => a.filter((id) => b.includes(id));
 
-    b.board.undo();
-    b.board.redo();
-    expect(b.ids()).toEqual(['m1']);
-    // A real second paste, here or in another document, renews the IDs.
-    b.paste(cut);
-    expect(b.ids()).toHaveLength(2);
-    expect(b.ids()[1]).not.toBe('m1');
-    const c = target();
-    c.paste(cut);
-    expect(c.ids()).toHaveLength(1);
-    expect(c.ids()[0]).not.toBe('m1');
+  it('moves cards with their IDs when cut and pasted in the same document', () => {
+    const a = documentWithCard();
+    const cut = a.cut();
+    expect(a.ids()).toEqual([]);
+    a.paste(cut);
+    expect(a.ids()).toEqual(['m1']);
+    // A second paste of the same cut is a copy.
+    a.paste(cut);
+    expect(a.ids()).toHaveLength(2);
+    expect(a.ids()[1]).not.toBe('m1');
+    // Undoing the first paste and pasting again is still the same move.
+    a.board.undo();
+    a.board.undo();
+    expect(a.ids()).toEqual([]);
+    a.paste(cut);
+    expect(a.ids()).toEqual(['m1']);
+    a.board.undo();
+    a.board.redo();
+    expect(a.ids()).toEqual(['m1']);
   });
 
-  it('lets another document take the move after it was undone here', () => {
-    const cut = cutSource();
-    const b = target();
-    b.paste(cut);
-    b.board.undo();
-    const c = target();
-    c.paste(cut);
-    expect(c.ids()).toEqual(['m1']);
-    // Redo here now comes after C took the IDs; C's paste is the move, so
-    // b's next paste renews.
-    b.paste(cut);
-    expect(b.ids()[0]).not.toBe('m1');
+  it('renews the IDs when the cut source is back on the board', () => {
+    const a = documentWithCard();
+    const cut = a.cut();
+    a.board.undo();
+    expect(a.ids()).toEqual(['m1']);
+    a.paste(cut);
+    expect(a.ids()).toHaveLength(2);
+    expect(a.ids()[1]).not.toBe('m1');
   });
 
   it('keeps the move when the pasted node is deleted and the delete undone', () => {
-    const cut = cutSource();
-    const b = target();
-    b.paste(cut);
-    fakeNodeWeakMap(b.board);
-    PlaitHistoryBoard.withNewBatch(b.board, () =>
-      Transforms.removeNode(b.board, [b.board.children.length - 1])
-    );
-    b.board.undo();
-    expect(b.ids()).toEqual(['m1']);
-    const c = target();
-    c.paste(cut);
-    expect(c.ids()[0]).not.toBe('m1');
-  });
-
-  it('renews cards restored by redo when another document took the move', () => {
-    const cut = cutSource();
-    const b = target();
-    b.paste(cut);
-    b.board.undo();
-    const c = target();
-    c.paste(cut);
-    expect(c.ids()).toEqual(['m1']);
-    b.board.redo();
-    const [restored] = b.ids();
-    expect(restored).not.toBe('m1');
-    // Stable: undo and redo again give the same replacement ID.
-    b.board.undo();
-    b.board.redo();
-    expect(b.ids()).toEqual([restored]);
-    // Once C gives the move back, B's redo takes the original IDs again.
-    c.board.undo();
-    b.board.undo();
-    b.board.redo();
-    expect(b.ids()).toEqual(['m1']);
-  });
-
-  it('does not free the cut when a later delete of the pasted node is redone', () => {
-    const cut = cutSource();
-    const b = target();
-    b.paste(cut);
-    fakeNodeWeakMap(b.board);
-    PlaitHistoryBoard.withNewBatch(b.board, () =>
-      Transforms.removeNode(b.board, [b.board.children.length - 1])
-    );
-    b.board.undo();
-    b.board.redo();
-    const c = target();
-    c.paste(cut);
-    expect(c.ids()[0]).not.toBe('m1');
-  });
-
-  it('renews the source cards when a cut is undone after another document took them', () => {
-    const a = setup();
-    setCards(a.board, [0, 1], [card('s1')]);
-    const child = (a.board.children[0] as MindElement).children[1];
-    a.board.buildFragment = () => ({
-      text: 'x',
-      type: WritableClipboardType.elements,
-      elements: [copyNewNode(child)],
-    });
-    a.board.deleteFragment = () => {
-      fakeNodeWeakMap(a.board);
-      PlaitHistoryBoard.withNewBatch(a.board, () =>
-        Transforms.removeNode(a.board, [0, 1])
-      );
-    };
-    withAnkiCards(a.board);
-    const fragment = a.board.buildFragment(
-      null,
-      null,
-      WritableClipboardOperationType.cut
-    );
-    a.board.deleteFragment([]);
-    const aIds = () => [...collectAnkiCardIds(a.board.children, new Set())];
-    const b = target();
-    b.paste(fragment?.elements as PlaitElement[]);
-    expect(b.ids()).toEqual(['s1']);
-
+    const a = documentWithCard();
+    a.paste(a.cut());
+    a.removeLast();
     a.board.undo();
-    expect(aIds()).toHaveLength(1);
-    expect(aIds()[0]).not.toBe('s1');
-    // Redoing the cut does not free a move that B holds.
+    expect(a.ids()).toEqual(['m1']);
     a.board.redo();
-    const c = target();
-    c.paste(fragment?.elements as PlaitElement[]);
-    expect(c.ids()[0]).not.toBe('s1');
-    // When B gives the move back, undoing the cut restores the original ID,
-    // and the clipboard content is then only a copy.
-    b.board.undo();
     a.board.undo();
-    expect(aIds()).toEqual(['s1']);
-    const d = target();
-    d.paste(fragment?.elements as PlaitElement[]);
-    expect(d.ids()[0]).not.toBe('s1');
+    expect(a.ids()).toEqual(['m1']);
   });
 
-  describe('with shared storage', () => {
-    let store: Map<string, string>;
+  it('renews the IDs once the cut step has left the undo history', () => {
+    const a = documentWithCard();
+    const cut = a.cut();
+    for (let i = 0; i < 100; i++) {
+      setCards(a.board, [0], [card(`r${i}`)]);
+    }
+    a.paste(cut);
+    expect(a.ids()).not.toContain('m1');
+  });
+
+  it('never lets older history steps of the source share IDs with another document', () => {
+    // Edit a card, cut its node, paste it into another document, then undo
+    // the cut and the edit in the source: the edit step still holds the
+    // original ID and brings it back.
+    const a = documentWithCard();
+    a.edit('edited');
+    const cut = a.cut();
+    const b = documentWithCard('other');
+    b.paste(cut);
+    expect(b.ids()).toHaveLength(2);
+    a.board.undo();
+    a.board.undo();
+    expect(a.ids()).toEqual(['m1']);
+    expect(shared(a.ids(), b.ids())).toEqual([]);
+    a.board.redo();
+    a.board.redo();
+    a.board.undo();
+    b.board.undo();
+    b.board.redo();
+    expect(shared(a.ids(), b.ids())).toEqual([]);
+  });
+
+  it('gives every other document its own IDs for the same cut', () => {
+    const a = documentWithCard();
+    const cut = a.cut();
+    const b = documentWithCard('b');
+    const c = documentWithCard('c');
+    b.paste(cut);
+    c.paste(cut);
+    expect(shared(b.ids(), c.ids())).toEqual([]);
+    expect(b.ids()).not.toContain('m1');
+    a.board.undo();
+    expect(shared(a.ids(), [...b.ids(), ...c.ids()])).toEqual([]);
+  });
+
+  it('does not forget an old cut after many later cuts', () => {
+    const a = documentWithCard();
+    const cut = a.cut();
+    const b = documentWithCard('b');
+    b.paste(cut);
+    for (let i = 0; i < 101; i++) {
+      const other = documentWithCard(`x${i}`);
+      other.paste(other.cut());
+    }
+    const c = documentWithCard('c');
+    c.paste(cut);
+    expect(shared(b.ids(), c.ids())).toEqual([]);
+  });
+
+  describe('when localStorage cannot be written', () => {
     beforeEach(() => {
-      store = new Map();
       vi.stubGlobal('localStorage', {
-        getItem: (key: string) => store.get(key) ?? null,
-        setItem: (key: string, value: string) => store.set(key, value),
+        getItem: () => null,
+        setItem: () => {
+          throw new DOMException('Quota exceeded', 'QuotaExceededError');
+        },
       });
     });
     afterEach(() => vi.unstubAllGlobals());
 
-    it('sees a cut freed by another window', () => {
-      const cut = cutSource();
-      const b = target();
+    it('still gives two documents different IDs for the same cut', () => {
+      const a = documentWithCard();
+      const cut = a.cut();
+      const b = documentWithCard('b');
+      const c = documentWithCard('c');
       b.paste(cut);
-      // Another window undid this paste's twin and freed the cut.
-      store.set('drawnix-anki-pasted-cuts', '[]');
-      const c = target();
       c.paste(cut);
-      expect(c.ids()).toEqual(['m1']);
+      expect(shared(b.ids(), c.ids())).toEqual([]);
     });
   });
 });

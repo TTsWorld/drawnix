@@ -232,21 +232,19 @@ export function markAnkiCardsCut(
 /**
  * Prepares clipboard elements for pasting. Copied or duplicated cards always
  * get new IDs, so a copy never shares an Anki GUID with its source, even in
- * another document. Cut cards keep their IDs (the source has been removed)
- * only on the first paste of that cut: `pastedCuts` holds cuts that were
- * already pasted, in any document, and is updated with this paste. An ID that
- * is already on the board is always renewed. Card objects are otherwise kept
- * as they are, including unknown fields.
+ * another document. Cut cards keep their IDs only when `isMove` accepts the
+ * cut (the editor accepts cuts made on the same board whose source removal
+ * is in its undo history). An ID that is already on the board is always
+ * renewed. Card objects are otherwise kept as they are, including unknown
+ * fields.
  */
 export function prepareAnkiCardsForPaste(
   elements: PlaitElement[],
   existing: PlaitElement[],
-  pastedCuts: Set<string>,
-  /** Filled with card ID → cut ID for every card that kept its ID. */
-  kept?: Map<string, string>
+  isMove: (cutId: string) => boolean = () => false
 ): PlaitElement[] {
   const used = collectAnkiCardIds(existing, new Set());
-  const renew = (element: PlaitElement, cut: string | null): PlaitElement => {
+  const renew = (element: PlaitElement, keepIds: boolean): PlaitElement => {
     let result = element;
     const cards: unknown = element['ankiCards'];
     if (Array.isArray(cards)) {
@@ -255,9 +253,8 @@ export function prepareAnkiCardsForPaste(
         ankiCards: cards.map((card) => {
           // Malformed entries are left alone; readers skip them.
           if (!isStoredAnkiCard(card)) return card;
-          const keep = cut !== null && !used.has(card.id);
+          const keep = keepIds && !used.has(card.id);
           const id = keep ? card.id : createAnkiCardId();
-          if (keep) kept?.set(id, cut);
           used.add(id);
           return keep ? card : { ...card, id };
         }),
@@ -266,21 +263,18 @@ export function prepareAnkiCardsForPaste(
     if (Array.isArray(element.children)) {
       result = {
         ...result,
-        children: element.children.map((child) => renew(child, cut)),
+        children: element.children.map((child) => renew(child, keepIds)),
       };
     }
     return result;
   };
-  const cuts = new Set<string>();
-  const prepared = elements.map((element) => {
+  return elements.map((element) => {
     const { [CUT_MARK]: cutId, ...rest } = element;
-    const isCut = typeof cutId === 'string' && !pastedCuts.has(cutId);
-    if (typeof cutId === 'string') cuts.add(cutId);
-    return renew(rest as PlaitElement, isCut ? (cutId as string) : null);
+    return renew(
+      rest as PlaitElement,
+      typeof cutId === 'string' && isMove(cutId)
+    );
   });
-  // Elements of one cut share its ID; record it after the whole paste.
-  cuts.forEach((cutId) => pastedCuts.add(cutId));
-  return prepared;
 }
 
 // 128-bit non-cryptographic hash (cyrb128); enough to make derived IDs
