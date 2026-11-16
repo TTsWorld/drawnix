@@ -265,6 +265,26 @@ describe('node action buttons', () => {
     expect(bars()).toHaveLength(1);
   });
 
+  it('hides the buttons of hovered and selected nodes while text is edited', async () => {
+    const { board, host, id } = await setup();
+    await selectMindNode(board, id);
+    expect(bars()).toHaveLength(1);
+    const editing = vi
+      .spyOn(PlaitBoard, 'hasBeenTextEditing')
+      .mockReturnValue(true);
+    await act(async () => {
+      board.afterChange();
+    });
+    expect(bars()).toHaveLength(0);
+    await pointer(host, 'pointermove', { clientX: 150, clientY: 120 });
+    expect(bars()).toHaveLength(0);
+    editing.mockReturnValue(false);
+    await act(async () => {
+      board.afterChange();
+    });
+    expect(bars()).toHaveLength(1);
+  });
+
   it('shows no buttons in read-only mode, keeping the resting dot', async () => {
     const { board, host, id } = await setup();
     board.options.readonly = true;
@@ -384,6 +404,28 @@ describe('node action buttons', () => {
       expect(window.document.activeElement).toBe(host);
     });
 
+    it('runs board undo and redo from the buttons', async () => {
+      const { board, editor, id } = await focusedSetup();
+      await act(async () => {
+        editor.updateMindmap([{ type: 'set_note', nodeId: id, note: 'm' }]);
+      });
+      const note = nodeAction('Original', '打开备注');
+      note.focus();
+      await act(async () => {
+        fireEvent.keyDown(note, { key: 'z', ctrlKey: true });
+      });
+      expect(editor.readMindmap()[0].note).toBe('n');
+      await act(async () => {
+        fireEvent.keyDown(nodeAction('Original', '打开备注'), {
+          key: 'Z',
+          metaKey: true,
+          shiftKey: true,
+        });
+      });
+      expect(editor.readMindmap()[0].note).toBe('m');
+      expect(board.history.redos).toHaveLength(0);
+    });
+
     it('keeps keys on the buttons away from the board', async () => {
       await focusedSetup();
       const note = nodeAction('Original', '打开备注');
@@ -391,7 +433,7 @@ describe('node action buttons', () => {
       const boardListener = vi.fn();
       window.addEventListener('keydown', boardListener);
       try {
-        for (const key of ['Tab', 'Delete', 'Enter', 'ArrowRight']) {
+        for (const key of ['Tab', 'Delete', 'Enter', 'ArrowRight', 'a', 'z']) {
           fireEvent.keyDown(note, { key });
         }
         expect(boardListener).not.toHaveBeenCalled();

@@ -168,10 +168,10 @@ export const MindmapNodeActions = () => {
   latest.current = { rects, hoveredId, size, overlap };
 
   const selected = getSelectedElements(board);
+  // Typing in a node: its buttons would hang over the growing text.
+  const editing = PlaitBoard.hasBeenTextEditing(board);
   const selectedId =
-    selected.length === 1 &&
-    MindElement.isMindElement(board, selected[0]) &&
-    !PlaitBoard.hasBeenTextEditing(board)
+    selected.length === 1 && MindElement.isMindElement(board, selected[0])
       ? selected[0].id
       : null;
   const openWidget: MindWidget | null = appState.openNoteId
@@ -299,7 +299,7 @@ export const MindmapNodeActions = () => {
   const active = new Set<string>();
   if (!readonly && selecting) {
     if (openId) active.add(openId);
-    if (!pressing) {
+    if (!pressing && !editing) {
       if (selectedId) active.add(selectedId);
       if (hoveredId) active.add(hoveredId);
     }
@@ -311,8 +311,19 @@ export const MindmapNodeActions = () => {
   };
 
   const onBarKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
-    // Plait handles keys on the document; Tab or Delete would edit the map.
+    // Plait handles keys on the document: Tab, Delete or typing would edit
+    // the map. Undo and redo still apply to the board, as in the panels.
     event.stopPropagation();
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      event.key.toLowerCase() === 'z' &&
+      !event.altKey
+    ) {
+      event.preventDefault();
+      if (event.shiftKey) board.redo();
+      else board.undo();
+      return;
+    }
     const buttons = Array.from(
       event.currentTarget.querySelectorAll<HTMLElement>('button')
     );
