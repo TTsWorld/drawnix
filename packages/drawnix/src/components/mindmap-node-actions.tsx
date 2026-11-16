@@ -49,6 +49,13 @@ export const NODE_ACTION_FIT_MIN_SIZE = 6;
 export const NODE_ACTION_HIT_SIZE = 24;
 /** The canvas-colored ring that cuts the node's border around each button. */
 const NODE_ACTION_RING = 1;
+/**
+ * The count badge sticks out of the card button by these shares of its
+ * diameter, away from the node and to the right (matches the stylesheet),
+ * plus its 1px ring.
+ */
+const NODE_ACTION_BADGE_OUT = 0.25;
+const NODE_ACTION_BADGE_RIGHT = 0.3;
 /** Room kept between the buttons (or their press areas) and a neighbour. */
 const NODE_ACTION_CLEARANCE = 2;
 /** Room kept between the buttons and the node's text inside the node. */
@@ -108,8 +115,17 @@ export function placeNodeActions(
   size = getNodeActionSize(rect.fontSize)
 ): NodeActionPlacement {
   const x = (rect.left + rect.right) / 2;
+  // The count badge shows on buttons large enough for icons.
+  const badge = (value: number) =>
+    rect.cardCount > 0 && value >= NODE_ACTION_ICON_MIN_SIZE;
   const startGap = getNodeActionGap(size);
-  const halfWidth = size + startGap / 2 + getOuterHitPad(size, startGap);
+  const halfWidth =
+    size +
+    startGap / 2 +
+    Math.max(
+      getOuterHitPad(size, startGap),
+      badge(size) ? size * NODE_ACTION_BADGE_RIGHT + NODE_ACTION_RING : 0
+    );
   let below = Infinity;
   let above = Infinity;
   for (const other of rects) {
@@ -129,9 +145,16 @@ export function placeNodeActions(
   // How far a row of this size goes into the node, at most half of it.
   const overlap = (side: Side, value: number) =>
     Math.max(0, Math.min(value / 2, inside[side]));
-  // Height the visible row takes outside the node, with ring and clearance.
+  // Height the visible row takes outside the node: ring, or the count badge
+  // on the far corner (Codex review 10), and clearance.
   const outside = (side: Side, value: number) =>
-    value - overlap(side, value) + NODE_ACTION_RING + NODE_ACTION_CLEARANCE;
+    value -
+    overlap(side, value) +
+    Math.max(
+      NODE_ACTION_RING,
+      badge(value) ? value * NODE_ACTION_BADGE_OUT + NODE_ACTION_RING : 0
+    ) +
+    NODE_ACTION_CLEARANCE;
   const place = (side: Side, value: number): NodeActionPlacement => {
     const into = overlap(side, value);
     const offset = value / 2 - into;

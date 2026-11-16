@@ -184,9 +184,9 @@ describe('node action buttons', () => {
     const cards = nodeAction('Original', '打开 Anki 卡片 (2)');
     expect(note.classList).toContain('drawnix-node-action--filled');
     expect(cards.classList).toContain('drawnix-node-action--filled');
-    expect(cards.querySelector('.drawnix-node-action__count')?.textContent).toBe(
-      '2'
-    );
+    expect(
+      cards.querySelector('.drawnix-node-action__count')?.textContent
+    ).toBe('2');
     expect(note.getAttribute('aria-expanded')).toBe('false');
     expect(dot(id)).toBeNull();
 
@@ -233,9 +233,9 @@ describe('node action buttons', () => {
     expect(
       nodeAction('Original', '打开 Anki 卡片 (2)').getAttribute('aria-expanded')
     ).toBe('true');
-    expect(
-      nodeAction('Original', '打开 Anki 卡片 (2)').classList
-    ).toContain('drawnix-node-action--open');
+    expect(nodeAction('Original', '打开 Anki 卡片 (2)').classList).toContain(
+      'drawnix-node-action--open'
+    );
 
     // Selecting another node leaves the open node's buttons in place.
     await selectMindNode(board, childId);
@@ -244,11 +244,15 @@ describe('node action buttons', () => {
     await act(async () => {
       fireEvent.click(nodeAction('Child', '添加备注'));
     });
-    expect(screen.getByRole('complementary', { name: '节点备注' })).toBeTruthy();
+    expect(
+      screen.getByRole('complementary', { name: '节点备注' })
+    ).toBeTruthy();
     expect(
       screen.queryByRole('complementary', { name: 'Anki 卡片' })
     ).toBeNull();
-    expect(screen.queryByRole('toolbar', { name: '节点操作: Original' })).toBeNull();
+    expect(
+      screen.queryByRole('toolbar', { name: '节点操作: Original' })
+    ).toBeNull();
 
     // A press on the button does not count as outside the panel; the click
     // after it closes the panel.
@@ -525,7 +529,9 @@ describe('node action colors', () => {
     expect(
       parseFloat(root.style.getPropertyValue('--drawnix-node-action-icon'))
     ).toBeCloseTo((16 * 2) / 3);
-    expect(root.style.getPropertyValue('--drawnix-node-action-gap')).toBe('4px');
+    expect(root.style.getPropertyValue('--drawnix-node-action-gap')).toBe(
+      '4px'
+    );
     expect(root.dataset.icons).toBe('shown');
     await selectMindNode(board, childId);
     expect(
@@ -599,14 +605,17 @@ describe('node action geometry', () => {
         isRoot,
         data: { topic: { children: [{ type: 'paragraph', children }] } },
         children: [],
-      }) as never;
+      } as never);
     expect(getNodeFontSize(node([{ text: 'a' }]))).toBe(14);
     expect(getNodeFontSize(node([{ text: 'a' }], true))).toBe(18);
     // Drawnix does not render larger marks; smaller ones count.
     expect(getNodeFontSize(node([{ text: 'a', 'font-size': '28' }]))).toBe(14);
     expect(
       getNodeFontSize(
-        node([{ text: 'a', 'font-size': '28' }, { text: 'b', 'font-size': '12' }])
+        node([
+          { text: 'a', 'font-size': '28' },
+          { text: 'b', 'font-size': '12' },
+        ])
       )
     ).toBe(12);
     expect(getNodeFontSize(node([{ text: '', 'font-size': '8' }]))).toBe(14);
@@ -654,7 +663,9 @@ describe('node action geometry', () => {
     expect(hitNodeRect(rects, 50, 10, null)).toBe('a');
     expect(hitNodeRect(rects, 50, 45, null)).toBeNull();
     expect(hitNodeRect(rects, 50, 45, strip)).toBe('a');
-    expect(hitNodeRect(rects, 50, 45, { id: 'b', top: 86, bottom: 108 })).toBeNull();
+    expect(
+      hitNodeRect(rects, 50, 45, { id: 'b', top: 86, bottom: 108 })
+    ).toBeNull();
     expect(hitNodeRect(rects, 50, 70, strip)).toBe('b');
     expect(hitNodeRect(rects, 150, 10, strip)).toBeNull();
     // Buttons on the top edge stick out above.
@@ -706,6 +717,28 @@ describe('node action geometry', () => {
       // Text touching the border: the buttons sit under it.
       const full = { ...small, contentTop: 0, contentBottom: 30 };
       expect(placeNodeActions(full, [full]).y).toBe(36);
+    });
+
+    it('keeps the count badge off the neighbour too (Codex review 10)', () => {
+      // 32px buttons (36px text, the root at 200%): the badge reaches
+      // 0.25 × 32 + 1 = 9px past the circle, so 16 + 9 + 2 = 27px below.
+      const big = { ...rect('a', 0, 36), contentTop: 0, contentBottom: 0 };
+      const below = (gap: number) => rect('b', 30 + gap);
+      const withCards = { ...big, cardCount: 2 };
+      expect(placeNodeActions(withCards, [withCards, below(27)]).side).toBe(
+        'below'
+      );
+      expect(placeNodeActions(withCards, [withCards, below(26)]).side).toBe(
+        'above'
+      );
+      // Without cards only the 1px ring counts: 16 + 1 + 2 = 19.
+      expect(placeNodeActions(big, [big, below(19)]).side).toBe('below');
+      // To the right, the badge reaches 0.3 × 32 + 1 = 10.6px past the row.
+      const right = { ...rect('r', 35), left: 50 + 32 + 4 + 10, right: 200 };
+      expect(placeNodeActions(withCards, [withCards, right]).side).toBe(
+        'above'
+      );
+      expect(placeNodeActions(big, [big, right]).side).toBe('below');
     });
 
     it('keeps a minimum size far zoomed out', () => {
