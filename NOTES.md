@@ -72,7 +72,11 @@ needs memory for its full pixels. An
 image is not added if the document would exceed 7.5 MiB (hosts such as Stair
 reject documents above 8 MiB); the panel shows an error, and a warning above
 6 MiB. The same limit applies to the whole editor: a paste or duplicate that
-would take the document past 8 MiB is refused with a notice, and after any
+would take the document past 8 MiB (including plain text pasted onto a node)
+is refused with a notice. The paste is applied, the saved document measured,
+and an oversized result rolled back with its history, so nesting and renewed
+card IDs are counted. Images that a paste reads asynchronously are not
+covered by this check. After any
 other change (redo, Agent commands, images on the board) a notice at the
 bottom of the editor reports a document above 6 MiB or over 8 MiB. Those
 changes are not refused, so hosts must still handle a save that is too large. Readers (`readAnkiCards()`, `getMindmapAnkiCards()`, the panel) only

@@ -51,9 +51,15 @@ async function setup() {
     () => ({}),
     <DocumentSizeNotice />
   );
-  const inserted = vi.fn();
-  result.board.insertFragment = inserted;
-  withDocumentSizeLimit(result.board);
+  const { board } = result;
+  // Plait would place the pasted elements on the board.
+  const inserted = vi.fn((data: { elements?: PlaitElement[] } | null) => {
+    for (const element of data?.elements ?? []) {
+      Transforms.insertNode(board, element, [board.children.length]);
+    }
+  });
+  board.insertFragment = inserted;
+  withDocumentSizeLimit(board);
   return { ...result, inserted };
 }
 
@@ -98,9 +104,13 @@ describe('document size limit', () => {
     await setNote(board, 'x'.repeat(5 * MiB));
     await waitForCheck();
     await act(async () => paste(board, 1 * MiB));
-    expect(inserted).toHaveBeenCalledTimes(1);
-    await act(async () => paste(board, 4 * MiB));
-    expect(inserted).toHaveBeenCalledTimes(1);
+    expect(board.children).toHaveLength(2);
+    const undos = [...board.history.undos];
+    await act(async () => paste(board, 3 * MiB));
+    expect(inserted).toHaveBeenCalledTimes(2);
+    // Rolled back: the document and its history are as before the paste.
+    expect(board.children).toHaveLength(2);
+    expect(board.history.undos).toEqual(undos);
     expect(screen.getByRole('alert').textContent).toMatch(
       /^未粘贴：粘贴后文档约 9\.0 MiB/
     );
