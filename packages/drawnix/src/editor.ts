@@ -6,6 +6,7 @@ import {
   Path,
   PlaitHistoryBoard,
   PlaitNode,
+  PlaitOperation,
   Transforms,
   PlaitBoard,
   type PlaitElement,
@@ -355,21 +356,40 @@ export function applyMindmapOperations(
     };
   }
 
-  const undoCount = board.history.undos.length;
-  const previousRedos = [...board.history.redos];
+  // Roll back by the operations this batch actually applied. Comparing undo
+  // stack lengths is not enough: Plait keeps 100 batches and drops the oldest
+  // when a new one is added. The saved history is restored as it was.
+  const { history } = board;
+  const undos = [...history.undos];
+  const redos = [...history.redos];
+  const applied: PlaitOperation[] = [];
+  const { apply } = board;
+  board.apply = (operation) => {
+    apply(operation);
+    applied.push(operation);
+  };
   let mutationFailed = false;
   let mutationError: unknown;
-  PlaitHistoryBoard.withNewBatch(board, () => {
-    try {
-      mutate();
-    } catch (error) {
-      mutationFailed = true;
-      mutationError = error;
-    }
-  });
+  try {
+    PlaitHistoryBoard.withNewBatch(board, () => {
+      try {
+        mutate();
+      } catch (error) {
+        mutationFailed = true;
+        mutationError = error;
+      }
+    });
+  } finally {
+    board.apply = apply;
+  }
   if (!mutationFailed) return;
 
-  while (board.history.undos.length > undoCount) board.undo();
-  board.history.redos = previousRedos;
+  PlaitHistoryBoard.withoutSaving(board, () => {
+    for (const operation of applied.map(PlaitOperation.inverse).reverse()) {
+      board.apply(operation);
+    }
+  });
+  history.undos = undos;
+  history.redos = redos;
   throw mutationError;
 }

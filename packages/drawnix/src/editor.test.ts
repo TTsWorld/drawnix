@@ -109,6 +109,36 @@ describe('independent mind-map notes', () => {
     ).toThrow();
     expect(editor.serialize()).toBe(before);
   });
+
+  it('rolls back a failed batch when the undo stack is full, keeping history', () => {
+    const { board, editor, id } = setup();
+    // Plait keeps 100 undo batches and drops the oldest when a new one is
+    // added, so the stack length does not grow with the failed batch.
+    for (let i = 0; i < 100; i++) {
+      editor.updateMindmap([{ type: 'set_note', nodeId: id, note: `n${i}` }]);
+    }
+    expect(board.history.undos).toHaveLength(100);
+    const undos = [...board.history.undos];
+    const before = editor.serialize();
+    const originalApply = board.apply;
+    let count = 0;
+    board.apply = (operation) => {
+      if (++count === 2) throw new Error('Synthetic failure');
+      originalApply(operation);
+    };
+    expect(() =>
+      editor.updateMindmap([
+        { type: 'set_note', nodeId: id, note: 'Must roll back' },
+        { type: 'set_topic', nodeId: id, topic: 'Must roll back' },
+      ])
+    ).toThrow('Synthetic failure');
+    board.apply = originalApply;
+    expect(editor.serialize()).toBe(before);
+    expect(board.history.undos).toEqual(undos);
+    expect(board.history.undos[0]).toBe(undos[0]);
+    board.undo();
+    expect(editor.readMindmap()[0].note).toBe('n98');
+  });
 });
 
 describe('inserting siblings', () => {
