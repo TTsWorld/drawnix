@@ -1,5 +1,6 @@
 // Card picker of the Anki panel: its button is the panel title and opens a
-// menu that lists the cards and ends with "delete current card".
+// menu that lists the cards. Each row ends with a button that deletes that
+// card; with the keyboard, Delete or Backspace on a row does the same.
 import { useEffect, useId, useRef, useState } from 'react';
 import type React from 'react';
 import { ChevronDownIcon, TrashIcon } from './icons';
@@ -23,13 +24,14 @@ function nextTabbable(element: HTMLElement): HTMLElement | undefined {
 export interface AnkiCardPickerItem {
   id: string;
   label: string;
+  /** Accessible name of the row's delete button ("Delete card 2"). */
+  deleteLabel: string;
 }
 
 export const AnkiCardPicker = ({
   items,
   currentIndex,
   selectLabel,
-  deleteLabel,
   onSelect,
   onDelete,
 }: {
@@ -37,17 +39,17 @@ export const AnkiCardPicker = ({
   currentIndex: number;
   /** Accessible name of the menu ("Select card"). */
   selectLabel: string;
-  deleteLabel: string;
   onSelect: (id: string) => void;
-  onDelete: () => void;
+  /** Deletes that card; the menu stays open on the remaining cards. */
+  onDelete: (id: string) => void;
 }) => {
   const menuId = useId();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  // Index into the menu entries: cards first, then the delete entry.
+  // Index of the card row that has focus while the menu is open.
   const [active, setActive] = useState(currentIndex);
-  const entryCount = items.length + 1;
+  const entryCount = items.length;
   const current = items[currentIndex];
 
   const openMenu = (at = currentIndex) => {
@@ -59,12 +61,13 @@ export const AnkiCardPicker = ({
     if (returnFocus) trigger.current?.focus();
   };
 
+  // Also after a delete: the focused row is gone and `active` may not change.
   useEffect(() => {
     if (!open) return;
     root.current
-      ?.querySelectorAll<HTMLElement>('[role^="menuitem"]')
+      ?.querySelectorAll<HTMLElement>('[role="menuitemradio"]')
       [active]?.focus();
-  }, [open, active]);
+  }, [open, active, items.length]);
 
   // A press elsewhere, also inside the panel, closes only the menu.
   useEffect(() => {
@@ -80,8 +83,16 @@ export const AnkiCardPicker = ({
 
   // Cards can change while the menu is open (undo, Agent edits).
   useEffect(() => {
-    setActive((value) => Math.min(value, entryCount - 1));
+    setActive((value) => Math.max(0, Math.min(value, entryCount - 1)));
   }, [entryCount]);
+
+  const deleteAt = (at: number) => {
+    const item = items[at];
+    if (!item) return;
+    // The neighbour moves into this row and keeps focus.
+    setActive(at);
+    onDelete(item.id);
+  };
 
   const onTriggerKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -107,6 +118,10 @@ export const AnkiCardPicker = ({
         return move(0);
       case 'End':
         return move(entryCount - 1);
+      case 'Delete':
+      case 'Backspace':
+        event.preventDefault();
+        return deleteAt(active);
       case 'Escape':
         // Close the menu, not the panel.
         event.preventDefault();
@@ -155,39 +170,45 @@ export const AnkiCardPicker = ({
         >
           <div className="drawnix-anki-menu-cards">
             {items.map((item, i) => (
-              <button
+              <div
                 key={item.id}
-                type="button"
-                role="menuitemradio"
-                aria-checked={i === currentIndex}
-                tabIndex={i === active ? 0 : -1}
+                role="none"
+                className="drawnix-anki-menu-row"
                 onPointerMove={() => i !== active && setActive(i)}
-                onClick={() => {
-                  closeMenu(true);
-                  onSelect(item.id);
-                }}
               >
-                {item.label}
-              </button>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={i === currentIndex}
+                  aria-keyshortcuts="Delete Backspace"
+                  tabIndex={i === active ? 0 : -1}
+                  onClick={() => {
+                    closeMenu(true);
+                    onSelect(item.id);
+                  }}
+                >
+                  {item.label}
+                </button>
+                <button
+                  type="button"
+                  className="drawnix-anki-menu-delete"
+                  aria-label={item.deleteLabel}
+                  title={item.deleteLabel}
+                  // Reached with Delete/Backspace on the row, not with Tab,
+                  // which leaves the menu.
+                  tabIndex={-1}
+                  // Keep focus on the rows instead of this button.
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    deleteAt(i);
+                  }}
+                >
+                  {TrashIcon}
+                </button>
+              </div>
             ))}
           </div>
-          <div role="separator" className="drawnix-anki-menu-separator" />
-          <button
-            type="button"
-            role="menuitem"
-            className="drawnix-anki-menu-delete"
-            tabIndex={active === items.length ? 0 : -1}
-            onPointerMove={() =>
-              active !== items.length && setActive(items.length)
-            }
-            onClick={() => {
-              closeMenu(false);
-              onDelete();
-            }}
-          >
-            {TrashIcon}
-            {deleteLabel}
-          </button>
         </div>
       )}
     </div>

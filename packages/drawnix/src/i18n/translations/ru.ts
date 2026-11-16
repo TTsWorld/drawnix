@@ -16,7 +16,7 @@ const ruTranslations: Translations = {
   'anki.back': "Оборотная сторона",
   'anki.tags': "Метки",
   'anki.tagsPlaceholder': "Через пробел",
-  'anki.deleteCurrent': "Удалить текущую карточку",
+  'anki.deleteCard': "Удалить карточку {n}",
   'anki.deleted': "{card} удалена. Нажмите Ctrl/⌘+Z, чтобы отменить",
   'anki.empty': "У этого узла пока нет карточек",
   'anki.select': "Выбрать карточку",

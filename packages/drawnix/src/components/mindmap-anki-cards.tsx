@@ -404,24 +404,30 @@ export const MindmapAnkiCards = () => {
     }
   };
 
-  /** One undo step; the notice tells how to bring the card back. */
-  const deleteCard = () => {
+  /**
+   * Deletes a card from the menu as one undo step; the notice tells how to
+   * bring it back. Another card stays shown; deleting the shown card shows
+   * its neighbour. Focus stays in the menu unless no card is left.
+   */
+  const deleteCard = (cardId: string) => {
     if (!node || !current) return;
-    const neighbour = cards[index + 1] ?? cards[index - 1];
+    const at = cards.findIndex((card) => card.id === cardId);
+    if (at < 0) return;
+    const shown =
+      cardId === current.id ? cards[at + 1] ?? cards[at - 1] : current;
     const deleted = updateCards(
       node.id,
-      (raw) => raw.filter((card) => card?.id !== current.id),
+      (raw) => raw.filter((card) => card?.id !== cardId),
       false
     );
     if (!deleted) return;
-    select(neighbour?.id ?? null);
+    // Pin the shown card by ID, since its position can change.
+    select(shown?.id ?? null);
     setNotice({
       kind: 'status',
-      text: t('anki.deleted').replace('{card}', cardName),
+      text: t('anki.deleted').replace('{card}', `${t('anki.card')} ${at + 1}`),
     });
-    setPendingFocus(
-      neighbour ? fieldSelector(neighbour.id, side) : '.drawnix-anki-add'
-    );
+    if (!shown) setPendingFocus('.drawnix-anki-add');
   };
 
   /**
@@ -625,10 +631,13 @@ export const MindmapAnkiCards = () => {
                     card.front,
                     t('anki.emptyFront')
                   )}`,
+                  deleteLabel: t('anki.deleteCard').replace(
+                    '{n}',
+                    String(i + 1)
+                  ),
                 }))}
                 currentIndex={index}
                 selectLabel={t('anki.select')}
-                deleteLabel={t('anki.deleteCurrent')}
                 onSelect={(cardId) => select(cardId)}
                 onDelete={deleteCard}
               />

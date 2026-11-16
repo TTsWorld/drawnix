@@ -16,7 +16,7 @@ const viTranslations: Translations = {
   'anki.back': "Mặt sau",
   'anki.tags': "Thẻ phân loại",
   'anki.tagsPlaceholder': "Phân tách bằng dấu cách",
-  'anki.deleteCurrent': "Xóa thẻ hiện tại",
+  'anki.deleteCard': "Xóa thẻ {n}",
   'anki.deleted': "Đã xóa {card}. Nhấn Ctrl/⌘+Z để hoàn tác",
   'anki.empty': "Nút này chưa có thẻ nào",
   'anki.select': "Chọn thẻ",

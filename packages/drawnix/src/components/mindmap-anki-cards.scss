@@ -161,24 +161,42 @@
       overflow-y: auto;
     }
 
-    .drawnix-anki-menu-separator {
-      height: 1px;
-      margin: 4px 0;
-      background: var(--color-gray-20);
+    .drawnix-anki-menu-row {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      border-radius: 4px;
+      [role='menuitemradio'] {
+        flex: 1;
+        min-width: 0;
+      }
     }
 
+    // Muted until its row is hovered or focused; always clickable.
     .drawnix-anki-menu .drawnix-anki-menu-delete {
-      padding-left: 8px;
-      color: var(--color-danger, #d93025);
+      flex: none;
+      justify-content: center;
+      width: 28px;
+      min-height: 28px;
+      height: 28px;
+      padding: 0;
+      color: var(--color-gray-60);
+      opacity: 0.45;
       svg {
         flex: none;
         width: 14px;
         height: 14px;
       }
-      &:hover,
-      &:focus {
+      &:hover {
         color: var(--color-danger, #d93025);
         background: #d930251a;
+      }
+    }
+
+    .drawnix-anki-menu-row:hover,
+    .drawnix-anki-menu-row:focus-within {
+      .drawnix-anki-menu-delete {
+        opacity: 1;
       }
     }
 

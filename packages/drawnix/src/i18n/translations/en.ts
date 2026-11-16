@@ -16,7 +16,7 @@ const enTranslations: Translations = {
   'anki.back': "Back",
   'anki.tags': "Tags",
   'anki.tagsPlaceholder': "Separate with spaces",
-  'anki.deleteCurrent': "Delete current card",
+  'anki.deleteCard': "Delete card {n}",
   'anki.deleted': "Deleted {card}. Press Ctrl/⌘+Z to undo",
   'anki.empty': "This node has no cards yet",
   'anki.select': "Select card",

@@ -91,10 +91,13 @@ async function chooseCard(name: string | RegExp) {
     fireEvent.click(screen.getByRole('menuitemradio', { name }));
   });
 }
-async function deleteCurrent() {
-  await openMenu();
+const deleteButton = (n: number) =>
+  screen.getByRole('button', { name: `删除卡片 ${n}` });
+/** Deletes card `n` with its row button, opening the menu if needed. */
+async function deleteCard(n: number) {
+  if (!screen.queryByRole('menu')) await openMenu();
   await act(async () => {
-    fireEvent.click(screen.getByRole('menuitem', { name: '删除当前卡片' }));
+    fireEvent.click(deleteButton(n));
   });
 }
 async function addCard() {
@@ -224,20 +227,25 @@ describe('mind-map Anki cards', () => {
         { id: 'c2', front: 'Q2', back: 'A2' },
       ],
     });
-    await deleteCurrent();
+    await deleteCard(1);
     expect(editor.readAnkiCards()[0].cards.map((card) => card.id)).toEqual([
       'c2',
     ]);
-    expect(document.activeElement).toBe(field('卡片 1 正面'));
+    // The menu stays open on the remaining card, which is now shown.
+    expect(screen.getByRole('menu')).toBeTruthy();
+    expect(document.activeElement?.textContent).toBe('卡片 1 · Q2');
     expect(field('卡片 1 正面').value).toBe('Q2');
     expect(screen.getByRole('status').textContent).toBe(
       '已删除卡片 1，按 Ctrl/⌘+Z 可撤销'
     );
-    await deleteCurrent();
+    await deleteCard(1);
     expect(editor.readAnkiCards()).toEqual([]);
     expect(JSON.parse(editor.serialize()).elements[0]).not.toHaveProperty(
       'ankiCards'
     );
+    // No card left: the menu goes away with the picker; the empty state shows.
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByText('这个节点还没有卡片')).toBeTruthy();
     expect(document.activeElement).toBe(addButton());
     expect(screen.getByRole('status').textContent).toMatch(/^已删除卡片 1/);
     await act(async () => {
@@ -550,11 +558,23 @@ describe('Anki card panel layout and images', () => {
       ['卡片 1 · First question', 'true'],
       ['卡片 2 · （正面为空）', 'false'],
     ]);
-    // Adding is a separate button, not a menu entry.
-    expect(screen.queryByRole('menuitem', { name: /新增/ })).toBeNull();
+    // Adding is a separate button; deleting is a button at the end of each
+    // row, not a menu entry.
+    expect(screen.queryAllByRole('menuitem')).toEqual([]);
+    expect(screen.queryByText('删除当前卡片')).toBeNull();
+    const rows = Array.from(
+      document.querySelectorAll('.drawnix-anki-menu-row')
+    );
     expect(
-      screen.getAllByRole('menuitem').map((item) => item.textContent)
-    ).toEqual(['删除当前卡片']);
+      rows.map((row) =>
+        Array.from(row.children).map(
+          (child) => child.getAttribute('role') ?? child.getAttribute('title')
+        )
+      )
+    ).toEqual([
+      ['menuitemradio', '删除卡片 1'],
+      ['menuitemradio', '删除卡片 2'],
+    ]);
     await act(async () => {
       fireEvent.click(screen.getByRole('menuitemradio', { name: /^卡片 2/ }));
     });
@@ -579,10 +599,12 @@ describe('Anki card panel layout and images', () => {
     await key(menu, 'ArrowDown');
     expect(document.activeElement?.textContent).toBe('卡片 2 · （正面为空）');
     await key(menu, 'ArrowDown');
-    expect(document.activeElement?.textContent).toBe('删除当前卡片');
-    await key(menu, 'ArrowDown');
     expect(document.activeElement?.textContent).toBe('卡片 1 · First question');
     await key(menu, 'End');
+    expect(document.activeElement?.textContent).toBe('卡片 2 · （正面为空）');
+    await key(menu, 'ArrowUp');
+    expect(document.activeElement?.textContent).toBe('卡片 1 · First question');
+    await key(menu, 'Home');
     await key(menu, 'ArrowUp');
     expect(document.activeElement?.textContent).toBe('卡片 2 · （正面为空）');
 
@@ -603,15 +625,18 @@ describe('Anki card panel layout and images', () => {
     expect(currentLabel()).toBe('卡片 2 · （正面为空）');
     expect(document.activeElement).toBe(trigger());
 
-    // ArrowUp opens on the delete entry; the delete is one undo step.
+    // ArrowUp opens on the last card; Delete on a row deletes that card as
+    // one undo step and keeps the menu open on its neighbour.
     await key(trigger(), 'ArrowUp');
-    expect(document.activeElement?.textContent).toBe('删除当前卡片');
-    await act(async () => {
-      fireEvent.click(document.activeElement as HTMLElement);
-    });
+    expect(document.activeElement?.textContent).toBe('卡片 2 · （正面为空）');
+    await key(document.activeElement as Element, 'Delete');
     expect(editor.readAnkiCards()[0].cards.map((card) => card.id)).toEqual([
       'c1',
     ]);
+    expect(screen.getByRole('menu')).toBeTruthy();
+    expect(document.activeElement?.textContent).toBe('卡片 1 · First question');
+    expect(currentLabel()).toBe('卡片 1 · First question');
+    await key(screen.getByRole('menu'), 'Escape');
     await act(async () => {
       board.undo();
     });
@@ -623,6 +648,116 @@ describe('Anki card panel layout and images', () => {
     // Escape without an open menu still closes the panel.
     await key(trigger(), 'Escape');
     expect(screen.queryByRole('complementary')).toBeNull();
+  });
+
+  describe('deleting from a menu row', () => {
+    const threeCards = () =>
+      setup({
+        cards: [
+          { id: 'c1', front: 'Q1', back: 'A1' },
+          { id: 'c2', front: 'Q2', back: 'A2' },
+          { id: 'c3', front: 'Q3', back: 'A3' },
+        ],
+      });
+    const ids = (editor: Awaited<ReturnType<typeof setup>>['editor']) =>
+      editor.readAnkiCards()[0].cards.map((card) => card.id);
+    const checked = () =>
+      screen
+        .getAllByRole('menuitemradio')
+        .filter((item) => item.getAttribute('aria-checked') === 'true')
+        .map((item) => item.textContent);
+
+    it('deletes another card without switching to it or closing anything', async () => {
+      const { editor } = await threeCards();
+      await chooseCard(/^卡片 2/);
+      await openMenu();
+      // A real press: pointerdown, mousedown, click.
+      const button = deleteButton(1);
+      await act(async () => {
+        fireEvent.pointerDown(button);
+        const mouseDown = fireEvent.mouseDown(button);
+        // The press keeps focus on the rows.
+        expect(mouseDown).toBe(false);
+        fireEvent.click(button);
+      });
+      expect(ids(editor)).toEqual(['c2', 'c3']);
+      expect(screen.getByRole('menu')).toBeTruthy();
+      expect(screen.getByRole('complementary')).toBeTruthy();
+      // Still card c2, now in first place.
+      expect(checked()).toEqual(['卡片 1 · Q2']);
+      expect(field('卡片 1 正面').value).toBe('Q2');
+      expect(screen.getByRole('status').textContent).toBe(
+        '已删除卡片 1，按 Ctrl/⌘+Z 可撤销'
+      );
+      await deleteCard(2);
+      expect(ids(editor)).toEqual(['c2']);
+      expect(checked()).toEqual(['卡片 1 · Q2']);
+      expect(screen.getByRole('status').textContent).toMatch(/^已删除卡片 2/);
+    });
+
+    it('shows the next card, or the previous one at the end, after deleting the shown card', async () => {
+      const { editor } = await threeCards();
+      await chooseCard(/^卡片 2/);
+      await deleteCard(2);
+      expect(ids(editor)).toEqual(['c1', 'c3']);
+      expect(field('卡片 2 正面').value).toBe('Q3');
+      expect(checked()).toEqual(['卡片 2 · Q3']);
+      await deleteCard(2);
+      expect(ids(editor)).toEqual(['c1']);
+      expect(field('卡片 1 正面').value).toBe('Q1');
+      expect(screen.getByRole('menu')).toBeTruthy();
+    });
+
+    it('restores the card with Ctrl/⌘+Z while the menu is open', async () => {
+      const { editor } = await threeCards();
+      await chooseCard(/^卡片 3/);
+      await deleteCard(1);
+      expect(ids(editor)).toEqual(['c2', 'c3']);
+      await act(async () => {
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'z', ctrlKey: true });
+      });
+      expect(ids(editor)).toEqual(['c1', 'c2', 'c3']);
+      // The shown card is kept by ID, back in its old place.
+      expect(currentLabel()).toBe('卡片 3 · Q3');
+    });
+
+    it('deletes the focused row with Backspace, never the mind-map node', async () => {
+      const { editor, board } = await threeCards();
+      const nodes = board.children.length;
+      await act(async () => {
+        fireEvent.keyDown(trigger(), { key: 'ArrowDown' });
+      });
+      await act(async () => {
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' });
+      });
+      expect(document.activeElement?.textContent).toBe('卡片 2 · Q2');
+      const backspace = new KeyboardEvent('keydown', {
+        key: 'Backspace',
+        bubbles: true,
+        cancelable: true,
+      });
+      await act(async () => {
+        document.activeElement?.dispatchEvent(backspace);
+      });
+      expect(backspace.defaultPrevented).toBe(true);
+      expect(ids(editor)).toEqual(['c1', 'c3']);
+      expect(board.children).toHaveLength(nodes);
+      // Focus moves to the card that took the deleted row's place.
+      expect(document.activeElement?.textContent).toBe('卡片 2 · Q3');
+      expect(currentLabel()).toBe('卡片 1 · Q1');
+    });
+
+    it('keeps the delete buttons out of the Tab order but labelled', async () => {
+      await threeCards();
+      await openMenu();
+      for (const n of [1, 2, 3]) {
+        expect(deleteButton(n).getAttribute('tabindex')).toBe('-1');
+        expect(deleteButton(n).getAttribute('title')).toBe(`删除卡片 ${n}`);
+      }
+      expect(
+        screen.getAllByRole('menuitemradio')[0].getAttribute('aria-keyshortcuts')
+      ).toBe('Delete Backspace');
+    });
   });
 
   it('closes the menu, not the panel, on a press elsewhere in the panel', async () => {
@@ -865,12 +1000,7 @@ describe('Anki card panel layout and images', () => {
       await settle(() =>
         fireEvent.change(input, { target: { files: [png()] } })
       );
-      await act(async () => {
-        fireEvent.click(trigger());
-      });
-      await act(async () => {
-        fireEvent.click(screen.getByRole('menuitem', { name: '删除当前卡片' }));
-      });
+      await deleteCard(1);
       // The progress notice about card 1 is not shown on card 2.
       expect(screen.getByRole('status').textContent).toMatch(/^已删除卡片 1/);
       await settle(() => release());

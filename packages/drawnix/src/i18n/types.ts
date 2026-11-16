@@ -20,7 +20,7 @@ export interface Translations {
   'anki.back': string;
   'anki.tags': string;
   'anki.tagsPlaceholder': string;
-  'anki.deleteCurrent': string;
+  'anki.deleteCard': string;
   'anki.deleted': string;
   'anki.empty': string;
   'anki.select': string;

@@ -16,7 +16,7 @@ const arTranslations: Translations = {
   'anki.back': "الظهر",
   'anki.tags': "الوسوم",
   'anki.tagsPlaceholder': "افصل بمسافات",
-  'anki.deleteCurrent': "حذف البطاقة الحالية",
+  'anki.deleteCard': "حذف البطاقة {n}",
   'anki.deleted': "تم حذف {card}. اضغط Ctrl/⌘+Z للتراجع",
   'anki.empty': "لا توجد بطاقات لهذه العقدة بعد",
   'anki.select': "اختيار بطاقة",
