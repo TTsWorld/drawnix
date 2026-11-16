@@ -976,6 +976,34 @@ describe('Anki card panel layout and images', () => {
     expect(editor.readAnkiCards()[0].cards[0].frontImages).toBeUndefined();
   });
 
+  it('explains why an image pasted without a card is not added', async () => {
+    // The panel is open on a node that has no cards yet.
+    await setup({ cards: [] });
+    const pasted = new Event('paste', { bubbles: true, cancelable: true });
+    Object.assign(pasted, { clipboardData: transfer([png()]) });
+    await act(async () => {
+      fireEvent(screen.getByRole('complementary', { name: 'Anki 卡片' }), pasted);
+    });
+    expect(pasted.defaultPrevented).toBe(true);
+    expect(screen.getByRole('alert').textContent).toBe(
+      '请先添加卡片，图片属于卡片'
+    );
+  });
+
+  it('leaves Mod+Alt+Z to the browser and undoes with Mod+Z only', async () => {
+    await twoCards();
+    const before = field('卡片 1 正面').value;
+    await type(field('卡片 1 正面'), 'typed');
+    const key = (init: KeyboardEventInit) =>
+      act(async () => {
+        fireEvent.keyDown(field('卡片 1 正面'), { key: 'z', ...init });
+      });
+    await key({ metaKey: true, altKey: true });
+    expect(field('卡片 1 正面').value).toBe('typed');
+    await key({ metaKey: true });
+    expect(field('卡片 1 正面').value).toBe(before);
+  });
+
   it('reports unsupported files and a full document instead of failing silently', async () => {
     const { editor } = await twoCards();
     const before = editor.serialize();

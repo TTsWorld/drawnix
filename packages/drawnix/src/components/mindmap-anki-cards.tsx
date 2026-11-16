@@ -165,14 +165,16 @@ function renderNotice(notice: Notice) {
 
 function imageErrorText(
   error: unknown,
-  t: (key: keyof Translations) => string,
-  projected?: number
+  t: (key: keyof Translations) => string
 ) {
   const code = error instanceof AnkiImageError ? error.code : 'unreadable';
   if (code === 'unsupported') return t('anki.imageUnsupported');
   if (code === 'too-large') return t('anki.imageTooLarge');
   if (code === 'document-full') {
-    return t('anki.documentFull').replace('{size}', formatMiB(projected ?? 0));
+    // The size the check projected, not one computed differently.
+    const projected =
+      (error as AnkiImageError & { projected?: number }).projected ?? 0;
+    return t('anki.documentFull').replace('{size}', formatMiB(projected));
   }
   return t('anki.imageUnreadable');
 }
@@ -475,12 +477,7 @@ export const MindmapAnkiCards = () => {
             };
           }
         } catch (error) {
-          const projected =
-            size + added.reduce((total, image) => total + image.url.length, 0);
-          failure = {
-            kind: 'error',
-            text: imageErrorText(error, t, projected),
-          };
+          failure = { kind: 'error', text: imageErrorText(error, t) };
           added.length = 0;
         }
       }
@@ -574,6 +571,7 @@ export const MindmapAnkiCards = () => {
         // Image paste belongs to the current card side, not the textarea.
         event.preventDefault();
         if (current) takeFiles(event.clipboardData);
+        else setNotice({ kind: 'error', text: t('anki.imageNoCard') });
       }}
       onDragEnter={(event) => {
         event.stopPropagation();
@@ -601,6 +599,7 @@ export const MindmapAnkiCards = () => {
         if (!hasFiles(event.dataTransfer)) return;
         event.preventDefault();
         if (current) takeFiles(event.dataTransfer);
+        else setNotice({ kind: 'error', text: t('anki.imageNoCard') });
       }}
     >
       <header>

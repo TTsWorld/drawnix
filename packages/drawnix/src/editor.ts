@@ -25,6 +25,7 @@ import {
   type PlaitMindBoard,
 } from '@plait/mind';
 import { Node, type Element as SlateElement } from 'slate';
+import { VERSIONS } from './constants';
 import { parseMarkdownToDrawnix } from '@plait-board/markdown-to-drawnix';
 import { getMindmapAnkiCards, type MindmapAnkiCardNode } from './anki-cards';
 import { findElementById } from './mind-tree';
@@ -347,7 +348,7 @@ export function createMindmapDocument(markdown: string): DrawnixDocument {
   mind.points = [[100, 100]];
   return {
     type: 'drawnix',
-    version: 1,
+    version: VERSIONS.drawnix,
     source: 'web',
     elements: [mind],
     viewport: { zoom: 1 },

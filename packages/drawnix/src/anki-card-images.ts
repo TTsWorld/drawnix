@@ -214,10 +214,13 @@ export function checkDocumentBudget(
     currentSize +
     addedUrls.reduce((total, url) => total + getUtf8Size(url) + 200, 0);
   if (projected > DOCUMENT_SIZE_MAX_AFTER_ADD) {
-    throw new AnkiImageError(
+    // The same number the check used, for the message.
+    const error = new AnkiImageError(
       'document-full',
       `The document would be ${projected} bytes`
     );
+    (error as AnkiImageError & { projected?: number }).projected = projected;
+    throw error;
   }
   return projected;
 }

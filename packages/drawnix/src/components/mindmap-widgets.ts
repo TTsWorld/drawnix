@@ -189,7 +189,12 @@ export function getMindWidgetPanelProps(
         event.preventDefault();
         close();
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+      // Alt stays with the browser (like Plait's own hotkeys).
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        event.key.toLowerCase() === 'z'
+      ) {
         event.preventDefault();
         lastInputOperation.current = null;
         if (event.shiftKey) board.redo();

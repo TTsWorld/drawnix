@@ -44,6 +44,7 @@ export interface Translations {
   'anki.imagesAdding': string;
   'anki.imagesAdded': string;
   'anki.imageTargetGone': string;
+  'anki.imageNoCard': string;
   'anki.imageDocumentSwitched': string;
   'document.large': string;
   'document.tooLarge': string;

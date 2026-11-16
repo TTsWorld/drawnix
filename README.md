@@ -1,5 +1,5 @@
 > 此 fork 增加了脑图节点备注，可独立运行，并以 `@ttsworld/drawnix` 包嵌入其他应用。
-> 开发分支为 `codex/node-notes`，运行、打包、接入和数据兼容说明见 [NOTES.md](./NOTES.md)。
+> 开发分支为 `feat/anki-card-widget`，运行、打包、接入和数据兼容说明见 [NOTES.md](./NOTES.md)。
 
 <p align="center">
   <picture style="width: 320px">
