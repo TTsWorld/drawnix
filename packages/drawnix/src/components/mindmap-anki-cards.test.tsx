@@ -112,6 +112,11 @@ async function addCard() {
     fireEvent.click(addButton());
   });
 }
+async function showBack() {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('tab', { name: '背面' }));
+  });
+}
 
 describe('mind-map Anki cards', () => {
   it('keeps note text out of existing and new cards', async () => {
@@ -130,9 +135,7 @@ describe('mind-map Anki cards', () => {
     });
     expect(field('卡片 1 正面').value).toBe('Q');
     expect(screen.queryByDisplayValue('111')).toBeNull();
-    await act(async () => {
-      fireEvent.click(screen.getByRole('tab', { name: '背面' }));
-    });
+    await showBack();
     expect(field('卡片 1 背面').value).toBe('');
 
     // A new card starts with the node title on the front and nothing from the note.
@@ -184,9 +187,7 @@ describe('mind-map Anki cards', () => {
     const front = field('卡片 1 正面');
     for (const value of ['Q1', 'Q12', 'Q123']) await type(front, value);
     fireEvent.blur(front);
-    await act(async () => {
-      fireEvent.click(screen.getByRole('tab', { name: '背面' }));
-    });
+    await showBack();
     const back = field('卡片 1 背面');
     await type(back, 'A1');
     const stored = () => editor.readAnkiCards()[0].cards[0];
@@ -926,9 +927,7 @@ describe('Anki card panel layout and images', () => {
 
   it('adds images from the upload button to the current side, compressed', async () => {
     const { editor } = await twoCards();
-    await act(async () => {
-      fireEvent.click(screen.getByRole('tab', { name: '背面' }));
-    });
+    await showBack();
     const input = screen.getByTestId('drawnix-anki-image-input');
     await settle(() =>
       fireEvent.change(input, { target: { files: [png(), png('b.png')] } })

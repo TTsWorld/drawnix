@@ -121,14 +121,17 @@ export function setNodeFromInput(
   lastInputOperation.current = batch[batch.length - 1];
 }
 
+/** The editor element that holds the board and its widget layers. */
+function getEditorElement(board: PlaitBoard): HTMLElement | null {
+  return PlaitBoard.getBoardContainer(board).closest<HTMLElement>('.drawnix');
+}
+
 export function closeMindWidgetPanel(
   board: PlaitBoard,
   setAppState: Dispatch<SetStateAction<DrawnixState>>
 ) {
   openMindWidget(setAppState, null);
-  const host =
-    PlaitBoard.getBoardContainer(board).closest<HTMLElement>('.drawnix');
-  host?.focus({ preventScroll: true });
+  getEditorElement(board)?.focus({ preventScroll: true });
 }
 
 /**
@@ -284,7 +287,7 @@ export function useMindNodeRects(board: PlaitBoard): MindNodeRect[] {
   // react-board advances its version after Plait refreshes layout references.
   // A local draft render can see new children before those references exist.
   useEffect(() => {
-    const host = PlaitBoard.getBoardContainer(board).closest('.drawnix');
+    const host = getEditorElement(board);
     if (!host) return;
     const update = () => {
       if (FLUSHING.get(board)) return;
@@ -341,7 +344,7 @@ export function useMindNodeRects(board: PlaitBoard): MindNodeRect[] {
 
   // One observer per board, not one per board change (each pan or zoom).
   useEffect(() => {
-    const host = PlaitBoard.getBoardContainer(board).closest('.drawnix');
+    const host = getEditorElement(board);
     if (!host) return;
     const observer = new ResizeObserver(() => latestUpdate.current());
     observer.observe(host);

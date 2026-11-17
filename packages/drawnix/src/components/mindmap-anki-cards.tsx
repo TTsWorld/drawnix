@@ -47,6 +47,10 @@ import {
 import './mindmap-anki-cards.scss';
 
 const SIDES: MindmapAnkiCardSide[] = ['front', 'back'];
+const SIDE_LABEL_KEYS = {
+  front: 'anki.front',
+  back: 'anki.back',
+} as const satisfies Record<MindmapAnkiCardSide, keyof Translations>;
 
 type RawCard = Record<string, unknown>;
 
@@ -228,7 +232,9 @@ export const MindmapAnkiCards = () => {
   const current: MindmapAnkiCard | undefined = cards[index];
   const busy = !!current && pendingCards.includes(current.id);
   const side: MindmapAnkiCardSide = ownSelection?.side ?? 'front';
-  const cardName = `${t('anki.card')} ${index + 1}`;
+  /** "Card n", with n counted from 1. */
+  const cardLabel = (n: number) => `${t('anki.card')} ${n}`;
+  const cardName = cardLabel(index + 1);
 
   const select = (cardId: string | null, nextSide = side) => {
     if (!node) return;
@@ -408,7 +414,7 @@ export const MindmapAnkiCards = () => {
     select(shown?.id ?? null);
     setNotice({
       kind: 'status',
-      text: t('anki.deleted').replace('{card}', `${t('anki.card')} ${at + 1}`),
+      text: t('anki.deleted').replace('{card}', cardLabel(at + 1)),
     });
     if (!shown) setPendingFocus('.drawnix-anki-add');
   };
@@ -445,21 +451,21 @@ export const MindmapAnkiCards = () => {
           failure ??= { kind: 'error', text: imageErrorText(error, t) };
         }
       }
-      let warning: Notice | null = null;
       if (cancelled()) return;
       if (getDocumentGeneration(board) !== target.generation) {
         setNotice({ kind: 'error', text: t('anki.imageDocumentSwitched') });
         return;
       }
-      const exists = getAnkiCards(findMindElement(board, target.nodeId)).some(
-        (card) => card.id === target.cardId
-      );
-      if (added.length && !exists) {
-        // Shown with whichever card is open, since the target is gone.
-        setNotice({ kind: 'error', text: t('anki.imageTargetGone') });
-        return;
-      }
+      let warning: Notice | null = null;
       if (added.length) {
+        const exists = getAnkiCards(
+          findMindElement(board, target.nodeId)
+        ).some((card) => card.id === target.cardId);
+        if (!exists) {
+          // Shown with whichever card is open, since the target is gone.
+          setNotice({ kind: 'error', text: t('anki.imageTargetGone') });
+          return;
+        }
         const size = getUtf8Size(serializeDrawnixBoard(board));
         try {
           const projected = checkDocumentBudget(
@@ -484,13 +490,10 @@ export const MindmapAnkiCards = () => {
           added.length = 0;
         }
       }
-      notify(
-        failure ??
-          warning ??
-          (added.length
-            ? { kind: 'status', text: t('anki.imagesAdded') }
-            : null)
-      );
+      const done: Notice | null = added.length
+        ? { kind: 'status', text: t('anki.imagesAdded') }
+        : null;
+      notify(failure ?? warning ?? done);
     };
     // A failure outside the per-file checks must not leave the panel busy or
     // stop later batches: the queue always settles.
@@ -531,6 +534,10 @@ export const MindmapAnkiCards = () => {
 
   /** Pasted or dropped files go to the current side; never to the board. */
   const takeFiles = (data: DataTransfer | null) => {
+    if (!current) {
+      setNotice({ kind: 'error', text: t('anki.imageNoCard') });
+      return;
+    }
     const files = getImageFiles(data);
     if (!files.length) {
       setNotice({ kind: 'error', text: t('anki.imageUnsupported') });
@@ -573,8 +580,7 @@ export const MindmapAnkiCards = () => {
         }
         // Image paste belongs to the current card side, not the textarea.
         event.preventDefault();
-        if (current) takeFiles(event.clipboardData);
-        else setNotice({ kind: 'error', text: t('anki.imageNoCard') });
+        takeFiles(event.clipboardData);
       }}
       onDragEnter={(event) => {
         event.stopPropagation();
@@ -601,8 +607,7 @@ export const MindmapAnkiCards = () => {
         setDragging(false);
         if (!hasFiles(event.dataTransfer)) return;
         event.preventDefault();
-        if (current) takeFiles(event.dataTransfer);
-        else setNotice({ kind: 'error', text: t('anki.imageNoCard') });
+        takeFiles(event.dataTransfer);
       }}
     >
       <header>
@@ -610,7 +615,7 @@ export const MindmapAnkiCards = () => {
           <AnkiCardPicker
             items={cards.map((card, i) => ({
               id: card.id,
-              label: `${t('anki.card')} ${i + 1} · ${summarize(
+              label: `${cardLabel(i + 1)} · ${summarize(
                 card.front,
                 t('anki.emptyFront')
               )}`,
@@ -686,7 +691,7 @@ export const MindmapAnkiCards = () => {
                   tabIndex={side === value ? 0 : -1}
                   onClick={() => select(current.id, value)}
                 >
-                  {t(value === 'front' ? 'anki.front' : 'anki.back')}
+                  {t(SIDE_LABEL_KEYS[value])}
                   {!!count && (
                     <span className="drawnix-anki-tab-count" aria-hidden>
                       {ImageIcon}
@@ -706,9 +711,7 @@ export const MindmapAnkiCards = () => {
             <AnkiCardField
               key={`${current.id}-${side}`}
               id={fieldId(current.id, side)}
-              label={`${cardName} ${t(
-                side === 'front' ? 'anki.front' : 'anki.back'
-              )}`}
+              label={`${cardName} ${t(SIDE_LABEL_KEYS[side])}`}
               value={current[side]}
               multiline
               onBlur={endInput}

@@ -60,6 +60,10 @@ export const AnkiCardPicker = ({
     setOpen(false);
     if (returnFocus) trigger.current?.focus();
   };
+  const toggleMenu = () => {
+    if (open) closeMenu(false);
+    else openMenu();
+  };
 
   // Also after a delete: the focused row is gone and `active` may not change.
   useEffect(() => {
@@ -153,12 +157,12 @@ export const AnkiCardPicker = ({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-label={`${selectLabel}: ${current?.label ?? ''}`}
-        onClick={() => (open ? closeMenu(false) : openMenu())}
+        onClick={toggleMenu}
         onKeyDown={onTriggerKeyDown}
       >
         <span className="drawnix-anki-picker-label">{current?.label}</span>
         <span className="drawnix-anki-picker-count" aria-hidden>
-          {currentIndex + 1}/{items.length}
+          {currentIndex + 1}/{entryCount}
         </span>
         {ChevronDownIcon}
       </button>
