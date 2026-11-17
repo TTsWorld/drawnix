@@ -14,7 +14,9 @@ import { FreehandShape } from './freehand/type';
 import { ArrowLineShape, BasicShapes } from '@plait/draw';
 
 export const buildDrawnixHotkeyPlugin = (
-  updateAppState: (appState: Partial<DrawnixState>) => void
+  updateAppState: (appState: Partial<DrawnixState>) => void,
+  /** Whether this editor's container has focus, so shortcuts are in scope. */
+  isEditorFocused: () => boolean = () => true
 ) => {
   const withDrawnixHotkey = (board: PlaitBoard) => {
     const { globalKeyDown, keyDown } = board;
@@ -24,8 +26,7 @@ export const buildDrawnixHotkeyPlugin = (
         event.target instanceof HTMLTextAreaElement;
       if (
         !isTypingNormal &&
-        (PlaitBoard.getMovingPointInBoard(board) ||
-          PlaitBoard.isMovingPointInBoard(board)) &&
+        isEditorFocused() &&
         !PlaitBoard.hasBeenTextEditing(board)
       ) {
         if (isHotkey(['mod+shift+e'], { byKey: true })(event)) {

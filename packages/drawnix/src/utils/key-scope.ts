@@ -16,21 +16,28 @@ export function isKeyInEditor(
   );
 }
 
+/** Whether this editor's container, or a control inside it, has focus. */
+export function isFocusInEditor(container: Element | null): boolean {
+  const active = document.activeElement;
+  return (
+    !!container && active instanceof Node && container.contains(active)
+  );
+}
+
 /**
- * Board-wide shortcuts (tools, Mod+S, zoom) also work while the pointer is
- * over this editor's board and nothing has focus yet, as in upstream
- * Drawnix, unless the key went to a text field or to another editor.
+ * Board-wide shortcuts (tools, Mod+S, zoom) also work while this editor has
+ * focus, as after a click on its board. Focus decides, not the pointer: with
+ * focus on a host control the key belongs to the host, even when the pointer
+ * happens to rest over this board.
  */
 export function isGlobalKeyForEditor(
   container: Element | null,
-  event: KeyboardEvent,
-  pointerOverBoard: boolean
+  event: KeyboardEvent
 ): boolean {
   if (isKeyInEditor(container, event)) return true;
-  if (!pointerOverBoard) return false;
+  if (!isFocusInEditor(container)) return false;
+  // Defensive for synthetic events whose target is not the focused element.
   const target = event.target;
   if (!(target instanceof Element)) return true;
-  if (target.closest(EDITABLE)) return false;
-  const editor = target.closest('.drawnix');
-  return !editor || editor === container;
+  return !target.closest(EDITABLE);
 }

@@ -40,7 +40,11 @@ import { LinkPopup } from './components/popup/link-popup/link-popup';
 import { I18nProvider } from './i18n';
 import { Tutorial } from './components/tutorial';
 import { LASER_POINTER_CLASS_NAME } from './utils/laser-pointer';
-import { isGlobalKeyForEditor, isKeyInEditor } from './utils/key-scope';
+import {
+  isFocusInEditor,
+  isGlobalKeyForEditor,
+  isKeyInEditor,
+} from './utils/key-scope';
 import { createDrawnixEditor, type DrawnixEditor } from './editor';
 import { MindmapNotes } from './components/mindmap-notes';
 import { MindmapAnkiCards } from './components/mindmap-anki-cards';
@@ -89,10 +93,7 @@ function scopeKeyboardToContainer(
   const ownsEvent = (event: KeyboardEvent) =>
     isKeyInEditor(getContainer(), event);
   board.globalKeyDown = (event) => {
-    const pointerOverBoard =
-      !!PlaitBoard.getMovingPointInBoard(board) ||
-      PlaitBoard.isMovingPointInBoard(board);
-    if (isGlobalKeyForEditor(getContainer(), event, pointerOverBoard)) {
+    if (isGlobalKeyForEditor(getContainer(), event)) {
       globalKeyDown(event);
     }
   };
@@ -149,13 +150,20 @@ export const Drawnix: React.FC<DrawnixProps> = ({
     }));
   };
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const plugins: PlaitPlugin[] = [
     withDraw,
     withGroup,
     withMind,
     withMindExtend,
     withCommonPlugin,
-    buildDrawnixHotkeyPlugin(updateAppState),
+    // Shortcuts are in scope while this editor's container has focus (as
+    // after a click on the board), not merely while the pointer is over it:
+    // with focus on a host control, the key belongs to the host.
+    buildDrawnixHotkeyPlugin(updateAppState, () =>
+      isFocusInEditor(containerRef.current)
+    ),
     withFreehand,
     buildPencilPlugin(updateAppState),
     buildTextLinkPlugin(updateAppState),
@@ -164,8 +172,6 @@ export const Drawnix: React.FC<DrawnixProps> = ({
     // Last: checks for a swapped document before every other plugin.
     withDocumentSwap,
   ];
-
-  const containerRef = useRef<HTMLDivElement>(null);
 
   // Repair duplicate card IDs before the board renders them, as part of
   // loading: no operation, so the host is not told the document changed the
