@@ -3,37 +3,40 @@ import { base64ToBlob, boardToImage, download } from './common';
 import { fileOpen } from '../data/filesystem';
 import { IMAGE_MIME_TYPES } from '../constants';
 import { insertImage } from '../data/image';
+import { waitForPendingAnkiCardImages } from '../anki-image-queue';
 
-export const saveAsSvg = (board: PlaitBoard) => {
+export const saveAsSvg = async (board: PlaitBoard) => {
+  await waitForPendingAnkiCardImages(board);
   const selectedElements = getSelectedElements(board);
-  return toSvgData(board, {
+  const svgData = await toSvgData(board, {
     fillStyle: 'transparent',
     padding: 20,
     ratio: 4,
     elements: selectedElements.length > 0 ? selectedElements : undefined,
     inlineStyleClassNames: '.plait-text-container',
     styleNames: ['position'],
-    
-  }).then((svgData) => {
-    const blob = new Blob([svgData], { type: 'image/svg+xml' });
-    const imageName = `drawnix-${new Date().getTime()}.svg`;
-    download(blob, imageName);
   });
+  const blob = new Blob([svgData], { type: 'image/svg+xml' });
+  const imageName = `drawnix-${new Date().getTime()}.svg`;
+  download(blob, imageName);
 };
 
-export const saveAsImage = (board: PlaitBoard, isTransparent: boolean) => {
+export const saveAsImage = async (
+  board: PlaitBoard,
+  isTransparent: boolean
+) => {
+  await waitForPendingAnkiCardImages(board);
   const selectedElements = getSelectedElements(board);
-  boardToImage(board, {
+  const image = await boardToImage(board, {
     elements: selectedElements.length > 0 ? selectedElements : undefined,
     fillStyle: isTransparent ? 'transparent' : 'white',
-  }).then((image) => {
-    if (image) {
-      const ext = isTransparent ? 'png' : 'jpg';
-      const pngImage = base64ToBlob(image);
-      const imageName = `drawnix-${new Date().getTime()}.${ext}`;
-      download(pngImage, imageName);
-    }
   });
+  if (image) {
+    const ext = isTransparent ? 'png' : 'jpg';
+    const pngImage = base64ToBlob(image);
+    const imageName = `drawnix-${new Date().getTime()}.${ext}`;
+    download(pngImage, imageName);
+  }
 };
 
 export const addImage = async (board: PlaitBoard) => {
