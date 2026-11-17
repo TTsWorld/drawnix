@@ -1,6 +1,6 @@
 {
   "name": "@ttsworld/drawnix",
-  "version": "0.4.0-notes.7",
+  "version": "0.4.0-anki.1",
   "main": "./index.js",
   "types": "./index.d.ts",
   "private": false,
