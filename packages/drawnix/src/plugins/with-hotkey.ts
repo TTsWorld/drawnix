@@ -13,6 +13,14 @@ import { MindPointerType } from '@plait/mind';
 import { FreehandShape } from './freehand/type';
 import { ArrowLineShape, BasicShapes } from '@plait/draw';
 
+/** Form controls / contenteditable where letter keys belong to the control. */
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return !!target.closest(
+    'input, textarea, select, button, [contenteditable]:not([contenteditable="false"])'
+  );
+}
+
 export const buildDrawnixHotkeyPlugin = (
   updateAppState: (appState: Partial<DrawnixState>) => void,
   /** Whether this editor's container has focus, so shortcuts are in scope. */
@@ -21,21 +29,21 @@ export const buildDrawnixHotkeyPlugin = (
   const withDrawnixHotkey = (board: PlaitBoard) => {
     const { globalKeyDown, keyDown } = board;
     board.globalKeyDown = (event: KeyboardEvent) => {
-      const isTypingNormal =
-        event.target instanceof HTMLInputElement ||
-        event.target instanceof HTMLTextAreaElement;
+      // Exclude <select> and other form controls: theme typeahead must keep
+      // letter keys, and contenteditable must keep typing.
+      const isTypingNormal = isEditableShortcutTarget(event.target);
       if (
         !isTypingNormal &&
         isEditorFocused() &&
         !PlaitBoard.hasBeenTextEditing(board)
       ) {
         if (isHotkey(['mod+shift+e'], { byKey: true })(event)) {
-          saveAsImage(board, true);
+          void saveAsImage(board, true);
           event.preventDefault();
           return;
         }
         if (isHotkey(['mod+s'], { byKey: true })(event)) {
-          saveAsJSON(board);
+          void saveAsJSON(board);
           event.preventDefault();
           return;
         }
@@ -50,9 +58,39 @@ export const buildDrawnixHotkeyPlugin = (
           return;
         }
         if (isHotkey(['mod+u'])(event)) {
-          addImage(board);
+          void addImage(board);
           event.preventDefault();
           return;
+        }
+        // Plait's own zoom hotkeys also require the pointer to be over the
+        // board. Handle them here under the focus scope so Ctrl/Cmd +/- / 0
+        // zoom the board (and preventDefault stops the browser page zoom)
+        // after a click, even when the pointer has left the canvas. Match
+        // Plait's key set explicitly: is-hotkey's `mod+=` is flaky for `=` in
+        // some environments.
+        const mod = event.metaKey || event.ctrlKey;
+        if (mod && !event.altKey) {
+          const key = event.key;
+          if (!event.shiftKey && (key === '=' || key === '+')) {
+            event.preventDefault();
+            BoardTransforms.updateZoom(board, board.viewport.zoom + 0.1);
+            return;
+          }
+          if (event.shiftKey && (key === '=' || key === '+')) {
+            event.preventDefault();
+            BoardTransforms.fitViewport(board);
+            return;
+          }
+          if (key === '-' || key === '_') {
+            event.preventDefault();
+            BoardTransforms.updateZoom(board, board.viewport.zoom - 0.1);
+            return;
+          }
+          if (key === '0') {
+            event.preventDefault();
+            BoardTransforms.updateZoom(board, 1);
+            return;
+          }
         }
         if (!event.altKey && !event.metaKey && !event.ctrlKey) {
           if (event.key === 'h') {
