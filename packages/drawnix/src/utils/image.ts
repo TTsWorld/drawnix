@@ -3,11 +3,17 @@ import { base64ToBlob, boardToImage, download } from './common';
 import { fileOpen } from '../data/filesystem';
 import { IMAGE_MIME_TYPES } from '../constants';
 import { insertImage } from '../data/image';
-import { waitForPendingAnkiCardImages } from '../anki-image-queue';
+import {
+  waitForPendingAnkiCardImages,
+  warnPendingCardImagesTimeout,
+} from '../anki-image-queue';
 
 export const saveAsSvg = async (board: PlaitBoard) => {
-  await waitForPendingAnkiCardImages(board);
+  // Capture the export target before awaiting images — selection can change
+  // while codecs run.
   const selectedElements = getSelectedElements(board);
+  const wait = await waitForPendingAnkiCardImages(board);
+  if (wait === 'timeout') warnPendingCardImagesTimeout('SVG export');
   const svgData = await toSvgData(board, {
     fillStyle: 'transparent',
     padding: 20,
@@ -25,8 +31,11 @@ export const saveAsImage = async (
   board: PlaitBoard,
   isTransparent: boolean
 ) => {
-  await waitForPendingAnkiCardImages(board);
+  // Capture the export target before awaiting images — selection can change
+  // while codecs run.
   const selectedElements = getSelectedElements(board);
+  const wait = await waitForPendingAnkiCardImages(board);
+  if (wait === 'timeout') warnPendingCardImagesTimeout('image export');
   const image = await boardToImage(board, {
     elements: selectedElements.length > 0 ? selectedElements : undefined,
     fillStyle: isTransparent ? 'transparent' : 'white',

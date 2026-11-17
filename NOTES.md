@@ -180,9 +180,11 @@ if the document was swapped or the target card no longer exists. Because
 `editor.waitForPendingCardImages()` (bounded, default 10 s) before flushing a
 save for close, window close, or a switch to another file, or an image the
 user just added can be missing from the saved document. The wait returns
-`'idle'` when every accepted batch settled, or `'timeout'` when the bound
-elapsed with work still pending — on timeout, save what `serialize()` already
-has and warn the user. After the wait (and after unmount), call `serialize()`
+`'idle'` only when the queue is clear at return time, or `'timeout'` when the
+bound elapsed with work still pending — on timeout, save what `serialize()`
+already has and warn the user. Built-in Save / Open open the file picker
+within the user gesture first, then await pending images before writing or
+replacing the document. After the wait (and after unmount), call `serialize()`
 again rather than relying only on a snapshot from `onValueChange`: a batch
 accepted before close still commits onto the board, but the change callback
 may already have been detached.

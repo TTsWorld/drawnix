@@ -4,7 +4,10 @@ import { fileOpen, fileSave } from './filesystem';
 import { DrawnixExportedData, DrawnixExportedType } from './types';
 import { loadFromBlob, normalizeFile } from './blob';
 import { serializeDrawnixBoard } from '../editor';
-import { waitForPendingAnkiCardImages } from '../anki-image-queue';
+import {
+  waitForPendingAnkiCardImages,
+  warnPendingCardImagesTimeout,
+} from '../anki-image-queue';
 
 export const getDefaultName = () => {
   const time = new Date().getTime();
@@ -15,13 +18,17 @@ export const saveAsJSON = async (
   board: PlaitBoard,
   name: string = getDefaultName()
 ) => {
-  // Card images commit asynchronously; wait (bounded) so Save to file right
-  // after adding an image still includes it.
-  await waitForPendingAnkiCardImages(board);
-  const serialized = serializeAsJSON(board);
-  const blob = new Blob([serialized], {
-    type: MIME_TYPES.drawnix,
-  });
+  // Open the save picker within the user gesture first (fileSave accepts a
+  // Promise<Blob> and shows the picker before awaiting it). Waiting for card
+  // images first would drop user activation and make showSaveFilePicker fail.
+  const blob = (async () => {
+    const wait = await waitForPendingAnkiCardImages(board);
+    if (wait === 'timeout') warnPendingCardImagesTimeout('save');
+    const serialized = serializeAsJSON(board);
+    return new Blob([serialized], {
+      type: MIME_TYPES.drawnix,
+    });
+  })();
 
   const fileHandle = await fileSave(blob, {
     name,
@@ -32,15 +39,17 @@ export const saveAsJSON = async (
 };
 
 export const loadFromJSON = async (board: PlaitBoard) => {
-  // Finish accepted image batches before Open File replaces the document, or
-  // a still-processing batch would be dropped as a document swap.
-  await waitForPendingAnkiCardImages(board);
+  // Open the file picker within the user gesture first. Then wait (bounded)
+  // for accepted image batches so Open File does not drop them as a document
+  // swap — without consuming activation before showOpenFilePicker.
   const file = await fileOpen({
     description: 'Drawnix files',
     // ToDo: Be over-permissive until https://bugs.webkit.org/show_bug.cgi?id=34442
     // gets resolved. Else, iOS users cannot open `.drawnix` files.
     // extensions: ["json", "drawnix", "png", "svg"],
   });
+  const wait = await waitForPendingAnkiCardImages(board);
+  if (wait === 'timeout') warnPendingCardImagesTimeout('open');
   return loadFromBlob(board, await normalizeFile(file));
 };
 

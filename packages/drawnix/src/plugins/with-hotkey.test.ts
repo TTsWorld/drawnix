@@ -84,6 +84,18 @@ describe('Drawnix hotkey focus scope', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
+  it('keeps tool keys after a toolbar <button> click leaves focus on the button', () => {
+    const { board, updateAppState } = hotkeyBoard(() => true);
+    const button = document.createElement('button');
+    document.body.appendChild(button);
+    press(board, { key: 'h', target: button });
+    expect(board.pointer).toBe(PlaitPointerType.hand);
+    expect(updateAppState).toHaveBeenCalledWith({
+      pointer: PlaitPointerType.hand,
+    });
+  });
+
+
   it('zooms with Ctrl/Cmd +/- under focus even without pointer over the board', () => {
     const { board } = hotkeyBoard(() => true);
     // Testing boards have no viewport host; stub zoom so we only assert routing.

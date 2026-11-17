@@ -13,11 +13,14 @@ import { MindPointerType } from '@plait/mind';
 import { FreehandShape } from './freehand/type';
 import { ArrowLineShape, BasicShapes } from '@plait/draw';
 
-/** Form controls / contenteditable where letter keys belong to the control. */
+/** Form controls / contenteditable where letter keys belong to the control.
+ * Toolbar <button>s are not excluded: after clicking zoom/undo/etc. the button
+ * may keep focus inside the editor, and letter tool keys / Cmd+S must still work.
+ */
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
   return !!target.closest(
-    'input, textarea, select, button, [contenteditable]:not([contenteditable="false"])'
+    'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
   );
 }
 

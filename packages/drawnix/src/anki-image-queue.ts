@@ -51,13 +51,35 @@ export async function waitForPendingAnkiCardImages(
       ),
       delay(Math.max(0, deadline - Date.now())).then(() => false),
     ]);
-    // Timed out: tell the host so it can save what committed and warn.
+    // Timed out while this batch was still in flight.
     if (!settled) return 'timeout';
-    // Queue cleared, or the bound is exhausted after a settle: idle.
-    // A later batch may have been chained while we waited — follow it while
-    // time remains.
-    if (getQueue() === queue || Date.now() >= deadline) return 'idle';
+    // Same settled promise still registered: nothing newer is pending.
+    if (getQueue() === queue) return 'idle';
+    // A later batch was chained while we waited. Follow it while time remains;
+    // if the bound is already exhausted, report timeout — do not claim idle
+    // while work is still pending.
+    if (Date.now() >= deadline) return 'timeout';
   }
+}
+
+/** Bound elapsed with work still pending: save/export what committed and warn. */
+export function warnPendingCardImagesTimeout(action: string): void {
+  const message = `Some card images were still processing during ${action}; continuing with what had finished.`;
+  console.warn(`[Drawnix] ${message}`);
+  if (typeof document === 'undefined' || !document.body) return;
+  const id = 'drawnix-pending-images-timeout';
+  document.getElementById(id)?.remove();
+  const el = document.createElement('div');
+  el.id = id;
+  el.setAttribute('role', 'status');
+  el.textContent = message;
+  el.style.cssText =
+    'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:99999;' +
+    'max-width:min(92vw,28rem);padding:10px 14px;border-radius:8px;' +
+    'background:#1f2937;color:#f9fafb;font:13px/1.4 system-ui,sans-serif;' +
+    'box-shadow:0 8px 24px rgba(0,0,0,.25)';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 5000);
 }
 
 /** Long enough for a large photo to decode and re-encode, short enough to close. */
