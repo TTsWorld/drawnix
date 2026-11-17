@@ -16,6 +16,12 @@ export const DOCUMENT_SIZE_CHECK_DELAY = 500;
 
 type Level = 'large' | 'tooLarge';
 
+function getLevel(size: number): Level | null {
+  if (size > DOCUMENT_SIZE_LIMIT) return 'tooLarge';
+  if (size > DOCUMENT_SIZE_WARNING) return 'large';
+  return null;
+}
+
 /**
  * Reports a document that is close to or over DOCUMENT_SIZE_LIMIT after any
  * change (paste, duplicate, redo, Agent commands, images), and pastes that
@@ -54,12 +60,7 @@ export const DocumentSizeNotice = () => {
     return () => clearTimeout(timer);
   }, [board, version]);
 
-  const level: Level | null =
-    size > DOCUMENT_SIZE_LIMIT
-      ? 'tooLarge'
-      : size > DOCUMENT_SIZE_WARNING
-      ? 'large'
-      : null;
+  const level = getLevel(size);
   useEffect(() => {
     // Dismissing hides one level; reaching another shows the notice again.
     if (dismissed && dismissed !== level) setDismissed(null);

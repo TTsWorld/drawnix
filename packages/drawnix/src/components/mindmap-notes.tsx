@@ -32,9 +32,11 @@ export const MindmapNotes = () => {
 
   useEffect(() => {
     lastInputOperation.current = null;
-    if (node) textarea.current?.focus();
-    else if (appState.openNoteId)
+    if (node) {
+      textarea.current?.focus();
+    } else if (appState.openNoteId) {
       setAppState((state) => ({ ...state, openNoteId: null }));
+    }
   }, [node?.id, appState.openNoteId, setAppState]);
 
   const close = () => closeMindWidgetPanel(board, setAppState);

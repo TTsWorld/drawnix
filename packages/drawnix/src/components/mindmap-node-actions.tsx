@@ -12,7 +12,7 @@ import {
 } from '@plait/core';
 import { MindElement } from '@plait/mind';
 import classNames from 'classnames';
-import { useDrawnix } from '../hooks/use-drawnix';
+import { type DrawnixState, useDrawnix } from '../hooks/use-drawnix';
 import { useI18n } from '../i18n';
 import { AnkiCardIcon, NoteIcon } from './icons';
 import { getCanvasColor, isDarkCanvas } from './mindmap-node-accent';
@@ -215,6 +215,30 @@ const isTextField = (target: EventTarget | null) =>
   target instanceof Element &&
   !!target.closest('input, textarea, select, [contenteditable="true"]');
 
+const getHost = (board: PlaitBoard) =>
+  PlaitBoard.getBoardContainer(board).closest<HTMLElement>('.drawnix');
+
+const isSameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
+  a.size === b.size && [...a].every((id) => b.has(id));
+
+function getOpenWidget(appState: DrawnixState): MindWidget | null {
+  if (appState.openNoteId) return 'note';
+  if (appState.openAnkiCardsId) return 'ankiCards';
+  return null;
+}
+
+type ContentStatusKey =
+  | 'nodeActions.hasNoteAndCards'
+  | 'nodeActions.hasNote'
+  | 'nodeActions.hasCards';
+
+function getContentStatusKey(rect: MindNodeRect): ContentStatusKey | null {
+  if (rect.hasNote && rect.hasCards) return 'nodeActions.hasNoteAndCards';
+  if (rect.hasNote) return 'nodeActions.hasNote';
+  if (rect.hasCards) return 'nodeActions.hasCards';
+  return null;
+}
+
 export const MindmapNodeActions = () => {
   const board = useBoard();
   const { t } = useI18n();
@@ -245,17 +269,15 @@ export const MindmapNodeActions = () => {
     selected.length === 1 && MindElement.isMindElement(board, selected[0])
       ? selected[0].id
       : null;
-  const openWidget: MindWidget | null = appState.openNoteId
-    ? 'note'
-    : appState.openAnkiCardsId
-    ? 'ankiCards'
-    : null;
+  const openWidget = getOpenWidget(appState);
   const openId = appState.openNoteId ?? appState.openAnkiCardsId ?? null;
+  const isOpen = (widget: MindWidget, id: string) =>
+    openWidget === widget && openId === id;
 
   useEffect(() => {
     if (readonly) return;
     const container = PlaitBoard.getBoardContainer(board);
-    const host = container.closest<HTMLElement>('.drawnix');
+    const host = getHost(board);
     if (!host) return;
     let leaveTimer: ReturnType<typeof setTimeout> | undefined;
     const cancelLeave = () => {
@@ -383,10 +405,8 @@ export const MindmapNodeActions = () => {
     setLeaving((current) => {
       const next = new Set([...current, ...gone]);
       active.forEach((id) => next.delete(id));
-      return next.size === current.size &&
-        [...next].every((id) => current.has(id))
-        ? current
-        : next;
+      // Keep the same set when nothing changed, so React skips the render.
+      return isSameSet(next, current) ? current : next;
     });
     if (!gone.length) return;
     const timer = setTimeout(() => {
@@ -407,8 +427,7 @@ export const MindmapNodeActions = () => {
   }, []);
 
   const toggle = (widget: MindWidget, id: string) => {
-    const isOpen = openWidget === widget && openId === id;
-    openMindWidget(setAppState, isOpen ? null : widget, id);
+    openMindWidget(setAppState, isOpen(widget, id) ? null : widget, id);
   };
 
   const onBarKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
@@ -439,20 +458,28 @@ export const MindmapNodeActions = () => {
     else if (event.key === 'End') move(buttons.length - 1);
     else if (event.key === 'Escape') {
       event.preventDefault();
-      PlaitBoard.getBoardContainer(board)
-        .closest<HTMLElement>('.drawnix')
-        ?.focus({ preventScroll: true });
+      getHost(board)?.focus({ preventScroll: true });
     }
   };
 
   const renderBar = (rect: MindNodeRect, ghost: boolean) => {
     const placement = placeNodeActions(rect, rects);
-    const noteOpen = !ghost && openWidget === 'note' && openId === rect.id;
-    const cardsOpen =
-      !ghost && openWidget === 'ankiCards' && openId === rect.id;
-    const noteLabel = t(rect.hasNote ? 'notes.open' : 'notes.add');
-    // No count, here or on the button: the fill says whether there are cards.
-    const cardsLabel = t(rect.hasCards ? 'anki.open' : 'anki.add');
+    const iconsShown = placement.size >= NODE_ACTION_ICON_MIN_SIZE;
+    const actions = [
+      {
+        widget: 'note' as const,
+        icon: NoteIcon,
+        filled: rect.hasNote,
+        label: t(rect.hasNote ? 'notes.open' : 'notes.add'),
+      },
+      {
+        widget: 'ankiCards' as const,
+        icon: AnkiCardIcon,
+        filled: rect.hasCards,
+        // No count, here or on the button: the fill says whether there are cards.
+        label: t(rect.hasCards ? 'anki.open' : 'anki.add'),
+      },
+    ];
     const style = {
       left: placement.x,
       top: placement.y,
@@ -484,16 +511,15 @@ export const MindmapNodeActions = () => {
           )}
           data-leaving-node-id={rect.id}
           data-side={placement.side}
-          data-icons={
-            placement.size >= NODE_ACTION_ICON_MIN_SIZE ? 'shown' : 'hidden'
-          }
+          data-icons={iconsShown ? 'shown' : 'hidden'}
           aria-hidden="true"
           style={style}
         >
-          <span className={buttonClass(rect.hasNote, false)}>{NoteIcon}</span>
-          <span className={buttonClass(rect.hasCards, false)}>
-            {AnkiCardIcon}
-          </span>
+          {actions.map(({ widget, icon, filled }) => (
+            <span key={widget} className={buttonClass(filled, false)}>
+              {icon}
+            </span>
+          ))}
         </div>
       );
     }
@@ -512,54 +538,37 @@ export const MindmapNodeActions = () => {
         )}
         data-node-id={rect.id}
         data-side={placement.side}
-        data-icons={
-          placement.size >= NODE_ACTION_ICON_MIN_SIZE ? 'shown' : 'hidden'
-        }
+        data-icons={iconsShown ? 'shown' : 'hidden'}
         style={style}
         onPointerDown={(event) => event.stopPropagation()}
         onKeyDown={onBarKeyDown}
       >
-        <button
-          type="button"
-          className={buttonClass(rect.hasNote, noteOpen)}
-          data-widget="note"
-          aria-label={noteLabel}
-          title={noteLabel}
-          aria-expanded={noteOpen}
-          tabIndex={tabStop === 'note' ? 0 : -1}
-          onFocus={() => setTabStop('note')}
-          onClick={() => toggle('note', rect.id)}
-        >
-          {NoteIcon}
-        </button>
-        <button
-          type="button"
-          className={buttonClass(rect.hasCards, cardsOpen)}
-          data-widget="ankiCards"
-          aria-label={cardsLabel}
-          title={cardsLabel}
-          aria-expanded={cardsOpen}
-          tabIndex={tabStop === 'ankiCards' ? 0 : -1}
-          onFocus={() => setTabStop('ankiCards')}
-          onClick={() => toggle('ankiCards', rect.id)}
-        >
-          {AnkiCardIcon}
-        </button>
+        {actions.map(({ widget, icon, filled, label }) => {
+          const open = isOpen(widget, rect.id);
+          return (
+            <button
+              key={widget}
+              type="button"
+              className={buttonClass(filled, open)}
+              data-widget={widget}
+              aria-label={label}
+              title={label}
+              aria-expanded={open}
+              tabIndex={tabStop === widget ? 0 : -1}
+              onFocus={() => setTabStop(widget)}
+              onClick={() => toggle(widget, rect.id)}
+            >
+              {icon}
+            </button>
+          );
+        })}
       </div>
     );
   };
 
   // The dots are pictures only; announce what the selected node holds.
   const selectedRect = rects.find((rect) => rect.id === selectedId);
-  const contentKey = !selectedRect
-    ? null
-    : selectedRect.hasNote && selectedRect.hasCards
-    ? 'nodeActions.hasNoteAndCards'
-    : selectedRect.hasNote
-    ? 'nodeActions.hasNote'
-    : selectedRect.hasCards
-    ? 'nodeActions.hasCards'
-    : null;
+  const contentKey = selectedRect ? getContentStatusKey(selectedRect) : null;
   const contentStatus =
     contentKey && selectedRect
       ? t(contentKey).replace('{topic}', selectedRect.topic)

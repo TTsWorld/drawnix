@@ -24,8 +24,8 @@ export function getPopupToolbarPlacement(
   board: PlaitBoard,
   elements: PlaitElement[]
 ): Placement {
-  return elements.length > 0 &&
-    elements.every((element) => isLeftOfParent(board, element))
-    ? 'left-start'
-    : 'right-start';
+  const allLeftOfParent =
+    elements.length > 0 &&
+    elements.every((element) => isLeftOfParent(board, element));
+  return allLeftOfParent ? 'left-start' : 'right-start';
 }
