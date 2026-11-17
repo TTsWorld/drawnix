@@ -84,54 +84,45 @@ function mindmapError(code: string, message: string): Error {
   return Object.assign(new Error(message), { code });
 }
 
+const invalidDocument = (message: string) =>
+  mindmapError('MINDMAP_INVALID_DOCUMENT', message);
+
+const invalidOperation = (message: string) =>
+  mindmapError('MINDMAP_INVALID_OPERATION', message);
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+/** The top-level fields of a native document, with a usable zoom. */
+function hasNativeDocumentFields(value: Record<string, unknown>): boolean {
+  const zoom = isObject(value.viewport) ? value.viewport.zoom : undefined;
+  return (
+    value.type === 'drawnix' &&
+    typeof value.version === 'number' &&
+    value.source === 'web' &&
+    Array.isArray(value.elements) &&
+    typeof zoom === 'number' &&
+    Number.isFinite(zoom) &&
+    zoom > 0
+  );
+}
+
 export function parseDrawnixDocument(content: string): DrawnixDocument {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
   } catch {
-    throw mindmapError(
-      'MINDMAP_INVALID_DOCUMENT',
-      'The document is not valid Drawnix JSON.'
-    );
+    throw invalidDocument('The document is not valid Drawnix JSON.');
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw mindmapError(
-      'MINDMAP_INVALID_DOCUMENT',
-      'The document is not a native Drawnix document.'
-    );
+  if (!isObject(parsed) || !hasNativeDocumentFields(parsed)) {
+    throw invalidDocument('The document is not a native Drawnix document.');
   }
-
-  const value = parsed as Partial<DrawnixDocument>;
-  const zoom =
-    value.viewport && typeof value.viewport === 'object'
-      ? (value.viewport as { zoom?: unknown }).zoom
-      : undefined;
-  if (
-    value.type !== 'drawnix' ||
-    typeof value.version !== 'number' ||
-    value.source !== 'web' ||
-    !Array.isArray(value.elements) ||
-    typeof zoom !== 'number' ||
-    !Number.isFinite(zoom) ||
-    zoom <= 0
-  ) {
-    throw mindmapError(
-      'MINDMAP_INVALID_DOCUMENT',
-      'The document is not a native Drawnix document.'
-    );
-  }
-  const invalid = findInvalidElement(value.elements as unknown[], false);
+  const invalid = findInvalidElement(parsed.elements as unknown[], false);
   if (invalid) {
-    throw mindmapError(
-      'MINDMAP_INVALID_DOCUMENT',
-      `The document has an invalid element: ${invalid}.`
-    );
+    throw invalidDocument(`The document has an invalid element: ${invalid}.`);
   }
-  return value as DrawnixDocument;
+  return parsed as unknown as DrawnixDocument;
 }
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === 'object' && !Array.isArray(value);
 
 /** A Slate node: text, or an element whose children are Slate nodes. */
 function isSlateNode(value: unknown, depth = 0): boolean {
@@ -180,7 +171,7 @@ export function serializeDrawnixBoard(board: PlaitBoard): string {
   return JSON.stringify(
     {
       type: 'drawnix',
-      version: 1,
+      version: VERSIONS.drawnix,
       source: 'web',
       elements: board.children,
       viewport: board.viewport,
@@ -231,33 +222,37 @@ const OPERATION_FIELDS: Record<MindmapOperation['type'], string[]> = {
 /** Operations usually come from Agent JSON: check types before use. */
 function validateOperationShapes(operations: unknown): void {
   if (!Array.isArray(operations)) {
-    throw mindmapError(
-      'MINDMAP_INVALID_OPERATION',
-      'Mind-map operations must be a list.'
-    );
+    throw invalidOperation('Mind-map operations must be a list.');
   }
   for (const operation of operations) {
     const type = isObject(operation) ? operation.type : undefined;
-    const fields =
+    // An own-property check, so names like `toString` are not operation types.
+    const isKnownType =
       typeof type === 'string' &&
-      Object.prototype.hasOwnProperty.call(OPERATION_FIELDS, type)
-        ? OPERATION_FIELDS[type as MindmapOperation['type']]
-        : null;
-    if (!fields) {
-      throw mindmapError(
-        'MINDMAP_INVALID_OPERATION',
+      Object.prototype.hasOwnProperty.call(OPERATION_FIELDS, type);
+    if (!isKnownType) {
+      throw invalidOperation(
         `Unknown mind-map operation type: ${String(type)}.`
       );
     }
-    for (const field of fields) {
+    for (const field of OPERATION_FIELDS[type as MindmapOperation['type']]) {
       if (typeof (operation as Record<string, unknown>)[field] !== 'string') {
-        throw mindmapError(
-          'MINDMAP_INVALID_OPERATION',
-          `${String(type)} needs a text ${field}.`
-        );
+        throw invalidOperation(`${String(type)} needs a text ${field}.`);
       }
     }
   }
+}
+
+type IncrementalOperation = Exclude<
+  MindmapOperation,
+  { type: 'populate_empty' }
+>;
+
+/** The node an incremental operation edits or inserts relative to. */
+function targetNodeId(operation: IncrementalOperation): string {
+  return operation.type === 'insert_child'
+    ? operation.parentId
+    : operation.nodeId;
 }
 
 function validateIncrementalOperations(
@@ -266,31 +261,21 @@ function validateIncrementalOperations(
 ): void {
   for (const operation of operations) {
     if (operation.type === 'populate_empty') continue;
-    const id =
-      operation.type === 'insert_child' ? operation.parentId : operation.nodeId;
-    const element = requireMindElement(board, id);
-    if (operation.type === 'insert_sibling' && PlaitMind.isMind(element)) {
-      throw mindmapError(
-        'MINDMAP_INVALID_OPERATION',
-        'A root mind-map node cannot have a sibling.'
-      );
-    }
-    // Summary nodes are mind elements with a start and end (AbstractNode).
-    if (
-      operation.type === 'insert_sibling' &&
-      typeof element['start'] === 'number' &&
-      typeof element['end'] === 'number'
-    ) {
-      throw mindmapError(
-        'MINDMAP_INVALID_OPERATION',
-        'A summary node cannot have a sibling.'
-      );
+    const element = requireMindElement(board, targetNodeId(operation));
+    if (operation.type === 'insert_sibling') {
+      if (PlaitMind.isMind(element)) {
+        throw invalidOperation('A root mind-map node cannot have a sibling.');
+      }
+      // Summary nodes are mind elements with a start and end (AbstractNode).
+      if (
+        typeof element['start'] === 'number' &&
+        typeof element['end'] === 'number'
+      ) {
+        throw invalidOperation('A summary node cannot have a sibling.');
+      }
     }
     if (operation.type !== 'set_note' && !operation.topic.trim()) {
-      throw mindmapError(
-        'MINDMAP_INVALID_OPERATION',
-        'Mind-map topics cannot be empty.'
-      );
+      throw invalidOperation('Mind-map topics cannot be empty.');
     }
   }
 }
@@ -298,10 +283,7 @@ function validateIncrementalOperations(
 export function createMindmapDocument(markdown: string): DrawnixDocument {
   const trimmedMarkdown = markdown.trim();
   if (!trimmedMarkdown) {
-    throw mindmapError(
-      'MINDMAP_INVALID_OPERATION',
-      'A root topic is required.'
-    );
+    throw invalidOperation('A root topic is required.');
   }
   const lines = trimmedMarkdown.split(/\r?\n/);
   const heading = /^\s{0,3}(#{1,6})\s+\S/;
@@ -317,8 +299,7 @@ export function createMindmapDocument(markdown: string): DrawnixDocument {
       rootTopic.startsWith('~~~') ||
       rootTopic.startsWith('>')
     ) {
-      throw mindmapError(
-        'MINDMAP_INVALID_OPERATION',
+      throw invalidOperation(
         'Markdown must begin with a root topic or heading.'
       );
     }
@@ -340,10 +321,7 @@ export function createMindmapDocument(markdown: string): DrawnixDocument {
   try {
     mind = parseMarkdownToDrawnix(lines.join('\n'));
   } catch {
-    throw mindmapError(
-      'MINDMAP_INVALID_OPERATION',
-      'Drawnix could not parse the Markdown hierarchy.'
-    );
+    throw invalidOperation('Drawnix could not parse the Markdown hierarchy.');
   }
   mind.points = [[100, 100]];
   return {
@@ -361,10 +339,7 @@ export function applyMindmapOperations(
 ): void {
   validateOperationShapes(operations);
   if (operations.length < 1 || operations.length > 50) {
-    throw mindmapError(
-      'MINDMAP_INVALID_OPERATION',
-      'Provide between 1 and 50 mind-map operations.'
-    );
+    throw invalidOperation('Provide between 1 and 50 mind-map operations.');
   }
 
   let mutate: () => void;
@@ -379,8 +354,7 @@ export function applyMindmapOperations(
       );
     }
     if (!populate.markdown.trim()) {
-      throw mindmapError(
-        'MINDMAP_INVALID_OPERATION',
+      throw invalidOperation(
         'Markdown used to populate a mind map cannot be empty.'
       );
     }
@@ -394,77 +368,96 @@ export function applyMindmapOperations(
     mutate = () => {
       for (const operation of operations) {
         if (operation.type === 'populate_empty') continue;
-        fakeNodeWeakMap(board);
-        const element = requireMindElement(
-          board,
-          operation.type === 'insert_child'
-            ? operation.parentId
-            : operation.nodeId
-        );
-        if (operation.type === 'set_note') {
-          // Keep metadata outside data: Plait rebuilds data when removing emojis.
-          Transforms.setNode(
-            board,
-            { note: operation.note || undefined },
-            PlaitBoard.findPath(board, element)
-          );
-          continue;
-        }
-        if (operation.type === 'set_topic') {
-          MindTransforms.setTopic(
-            board as PlaitMindBoard,
-            element,
-            buildText(operation.topic) as SlateElement
-          );
-          continue;
-        }
-
-        let path: number[];
-        if (operation.type === 'insert_child') {
-          // Like MindTransforms.insertChildNode, expand a collapsed parent
-          // so the new child shows. Unlike it, the expansion is part of the
-          // batch: one undo removes the child and collapses the parent again.
-          if (element.isCollapsed) {
-            Transforms.setNode(
-              board,
-              { isCollapsed: false },
-              PlaitBoard.findPath(board, element)
-            );
-          }
-          path = findNewChildNodePath(board, element);
-        } else {
-          // Like MindTransforms.insertSiblingNode, without selecting the new
-          // node or starting topic editing: a summary covering the node also
-          // covers the new sibling, and a sibling on the right side of a
-          // standard layout stays on the right.
-          const nodePath = PlaitBoard.findPath(board, element);
-          path = Path.next(nodePath);
-          if (isInRightBranchOfStandardLayout(element)) {
-            MindTransforms.setRightNodeCountByRefs(
-              board,
-              insertElementHandleRightNodeCount(board, nodePath.slice(0, 1), 1)
-            );
-          }
-          MindTransforms.setAbstractsByRefs(
-            board,
-            insertElementHandleAbstract(board, path)
-          );
-        }
-        MindTransforms.insertNodes(
-          board,
-          [createMindElement(operation.topic, {})],
-          path
-        );
-        if (!MindElement.isMindElement(board, PlaitNode.get(board, path))) {
-          throw mindmapError(
-            'MINDMAP_UPDATE_FAILED',
-            'Drawnix did not insert the requested mind-map node.'
-          );
-        }
+        applyIncrementalOperation(board, operation);
       }
     };
   }
 
+  applyAsOneBatch(board, mutate);
+}
+
+function applyIncrementalOperation(
+  board: PlaitBoard,
+  operation: IncrementalOperation
+): void {
+  fakeNodeWeakMap(board);
+  const element = requireMindElement(board, targetNodeId(operation));
+  if (operation.type === 'set_note') {
+    // Keep metadata outside data: Plait rebuilds data when removing emojis.
+    Transforms.setNode(
+      board,
+      { note: operation.note || undefined },
+      PlaitBoard.findPath(board, element)
+    );
+    return;
+  }
+  if (operation.type === 'set_topic') {
+    MindTransforms.setTopic(
+      board as PlaitMindBoard,
+      element,
+      buildText(operation.topic) as SlateElement
+    );
+    return;
+  }
+
+  const path =
+    operation.type === 'insert_child'
+      ? prepareChildInsertion(board, element)
+      : prepareSiblingInsertion(board, element);
+  MindTransforms.insertNodes(
+    board,
+    [createMindElement(operation.topic, {})],
+    path
+  );
+  if (!MindElement.isMindElement(board, PlaitNode.get(board, path))) {
+    throw mindmapError(
+      'MINDMAP_UPDATE_FAILED',
+      'Drawnix did not insert the requested mind-map node.'
+    );
+  }
+}
+
+/** Returns the path a new child of `parent` is inserted at. */
+function prepareChildInsertion(board: PlaitBoard, parent: MindElement): Path {
+  // Like MindTransforms.insertChildNode, expand a collapsed parent so the new
+  // child shows. Unlike it, the expansion is part of the batch: one undo
+  // removes the child and collapses the parent again.
+  if (parent.isCollapsed) {
+    Transforms.setNode(
+      board,
+      { isCollapsed: false },
+      PlaitBoard.findPath(board, parent)
+    );
+  }
+  return findNewChildNodePath(board, parent);
+}
+
+/** Returns the path a new sibling after `node` is inserted at. */
+function prepareSiblingInsertion(board: PlaitBoard, node: MindElement): Path {
+  // Like MindTransforms.insertSiblingNode, without selecting the new node or
+  // starting topic editing: a summary covering the node also covers the new
+  // sibling, and a sibling on the right side of a standard layout stays on
+  // the right.
+  const nodePath = PlaitBoard.findPath(board, node);
+  const path = Path.next(nodePath);
+  if (isInRightBranchOfStandardLayout(node)) {
+    MindTransforms.setRightNodeCountByRefs(
+      board,
+      insertElementHandleRightNodeCount(board, nodePath.slice(0, 1), 1)
+    );
+  }
+  MindTransforms.setAbstractsByRefs(
+    board,
+    insertElementHandleAbstract(board, path)
+  );
+  return path;
+}
+
+/**
+ * Runs `mutate` as one undo batch. If it throws, the batch is rolled back and
+ * the error rethrown.
+ */
+function applyAsOneBatch(board: PlaitBoard, mutate: () => void): void {
   // Roll back by the operations this batch actually applied. Comparing undo
   // stack lengths is not enough: Plait keeps 100 batches and drops the oldest
   // when a new one is added. The saved history is restored as it was.

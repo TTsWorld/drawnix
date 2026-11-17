@@ -46,6 +46,5 @@ export const isValidDrawnixData = (data?: any): data is DrawnixExportedData => {
   );
 };
 
-export const serializeAsJSON = (board: PlaitBoard): string => {
-  return serializeDrawnixBoard(board);
-};
+export const serializeAsJSON = (board: PlaitBoard): string =>
+  serializeDrawnixBoard(board);

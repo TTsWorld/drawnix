@@ -45,15 +45,14 @@ export type DrawnixState = {
   openAnkiCardsId?: string | null;
 };
 
-export const DrawnixContext = createContext<{
+type DrawnixContextValue = {
   appState: DrawnixState;
   setAppState: Dispatch<SetStateAction<DrawnixState>>;
-} | null>(null);
+};
 
-export const useDrawnix = (): {
-  appState: DrawnixState;
-  setAppState: Dispatch<SetStateAction<DrawnixState>>;
-} => {
+export const DrawnixContext = createContext<DrawnixContextValue | null>(null);
+
+export const useDrawnix = (): DrawnixContextValue => {
   const context = useContext(DrawnixContext);
 
   if (!context) {

@@ -68,6 +68,42 @@ export type DrawnixProps = {
   tutorial?: boolean;
 } & React.HTMLAttributes<HTMLDivElement>;
 
+const INTERACTIVE_CONTROLS =
+  'input, textarea, button, select, [contenteditable="true"]';
+
+/** Focuses the editor container on a pointer down outside its own controls. */
+function focusContainerOnPointerDown(
+  event: React.PointerEvent<HTMLDivElement>
+) {
+  if (!(event.target as Element).closest(INTERACTIVE_CONTROLS)) {
+    event.currentTarget.focus({ preventScroll: true });
+  }
+}
+
+/** Multiple embedded editors must not handle each other's shortcuts. */
+function scopeKeyboardToContainer(
+  board: PlaitBoard,
+  getContainer: () => HTMLElement | null
+) {
+  const { globalKeyDown, keyDown, keyUp } = board;
+  const ownsEvent = (event: KeyboardEvent) =>
+    isKeyInEditor(getContainer(), event);
+  board.globalKeyDown = (event) => {
+    const pointerOverBoard =
+      !!PlaitBoard.getMovingPointInBoard(board) ||
+      PlaitBoard.isMovingPointInBoard(board);
+    if (isGlobalKeyForEditor(getContainer(), event, pointerOverBoard)) {
+      globalKeyDown(event);
+    }
+  };
+  board.keyDown = (event) => {
+    if (ownsEvent(event)) keyDown(event);
+  };
+  board.keyUp = (event) => {
+    if (ownsEvent(event)) keyUp(event);
+  };
+}
+
 export const Drawnix: React.FC<DrawnixProps> = ({
   value,
   viewport,
@@ -153,13 +189,7 @@ export const Drawnix: React.FC<DrawnixProps> = ({
           })}
           ref={containerRef}
           tabIndex={-1}
-          onPointerDownCapture={(event) => {
-            if (!(event.target as Element).closest(
-              'input, textarea, button, select, [contenteditable="true"]'
-            )) {
-              event.currentTarget.focus({ preventScroll: true });
-            }
-          }}
+          onPointerDownCapture={focusContainerOnPointerDown}
         >
           <Wrapper
             value={elements}
@@ -177,30 +207,7 @@ export const Drawnix: React.FC<DrawnixProps> = ({
           >
             <Board
               afterInit={(board) => {
-                // Multiple embedded editors must not handle each other's shortcuts.
-                const { globalKeyDown, keyDown, keyUp } = board;
-                const ownsEvent = (event: KeyboardEvent) =>
-                  isKeyInEditor(containerRef.current, event);
-                board.globalKeyDown = (event) => {
-                  const pointerOverBoard =
-                    !!PlaitBoard.getMovingPointInBoard(board) ||
-                    PlaitBoard.isMovingPointInBoard(board);
-                  if (
-                    isGlobalKeyForEditor(
-                      containerRef.current,
-                      event,
-                      pointerOverBoard
-                    )
-                  ) {
-                    globalKeyDown(event);
-                  }
-                };
-                board.keyDown = (event) => {
-                  if (ownsEvent(event)) keyDown(event);
-                };
-                board.keyUp = (event) => {
-                  if (ownsEvent(event)) keyUp(event);
-                };
+                scopeKeyboardToContainer(board, () => containerRef.current);
                 setBoard(board as DrawnixBoard);
                 afterInit && afterInit(board);
                 onEditorReady?.(createDrawnixEditor(board));

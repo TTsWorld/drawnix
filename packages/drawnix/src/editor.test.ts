@@ -18,14 +18,23 @@ import {
   parseDrawnixDocument,
 } from './editor';
 
-function setup() {
+function setup(markdown = '# 核心点\n## 子节点') {
   const board = createTestingBoard([withHistory], []);
   const editor = createDrawnixEditor(board);
-  editor.updateMindmap([
-    { type: 'populate_empty', markdown: '# 核心点\n## 子节点' },
-  ]);
+  editor.updateMindmap([{ type: 'populate_empty', markdown }]);
   const id = editor.readMindmap()[0].id;
   return { board, editor, id };
+}
+
+/** Makes the board's second applied operation throw; returns the real apply. */
+function failSecondApply(board: PlaitBoard) {
+  const originalApply = board.apply;
+  let count = 0;
+  board.apply = (operation) => {
+    if (++count === 2) throw new Error('Synthetic failure');
+    originalApply(operation);
+  };
+  return originalApply;
 }
 
 describe('independent mind-map notes', () => {
@@ -91,12 +100,7 @@ describe('independent mind-map notes', () => {
   it('rolls back a failed batch including its note mutation', () => {
     const { board, editor, id } = setup();
     const before = editor.serialize();
-    const originalApply = board.apply;
-    let count = 0;
-    board.apply = (operation) => {
-      if (++count === 2) throw new Error('Synthetic failure');
-      originalApply(operation);
-    };
+    failSecondApply(board);
     expect(() =>
       editor.updateMindmap([
         { type: 'set_note', nodeId: id, note: 'Must roll back' },
@@ -128,12 +132,7 @@ describe('independent mind-map notes', () => {
     expect(board.history.undos).toHaveLength(100);
     const undos = [...board.history.undos];
     const before = editor.serialize();
-    const originalApply = board.apply;
-    let count = 0;
-    board.apply = (operation) => {
-      if (++count === 2) throw new Error('Synthetic failure');
-      originalApply(operation);
-    };
+    const originalApply = failSecondApply(board);
     expect(() =>
       editor.updateMindmap([
         { type: 'set_note', nodeId: id, note: 'Must roll back' },
@@ -155,11 +154,7 @@ describe('inserting siblings', () => {
   }
 
   it('extends a summary that covers the node the sibling is inserted after', () => {
-    const board = createTestingBoard([withHistory], []);
-    const editor = createDrawnixEditor(board);
-    editor.updateMindmap([
-      { type: 'populate_empty', markdown: '# Root\n## A\n## B\n## C' },
-    ]);
+    const { board, editor } = setup('# Root\n## A\n## B\n## C');
     fakeNodeWeakMap(board);
     PlaitHistoryBoard.withNewBatch(board, () => {
       Transforms.insertNode(
@@ -195,11 +190,7 @@ describe('inserting siblings', () => {
   });
 
   it('keeps right-side nodes on the right in a standard layout', () => {
-    const board = createTestingBoard([withHistory], []);
-    const editor = createDrawnixEditor(board);
-    editor.updateMindmap([
-      { type: 'populate_empty', markdown: '# Root\n## R1\n## R2\n## L1' },
-    ]);
+    const { board, editor } = setup('# Root\n## R1\n## R2\n## L1');
     fakeNodeWeakMap(board);
     PlaitHistoryBoard.withNewBatch(board, () => {
       Transforms.setNode(
