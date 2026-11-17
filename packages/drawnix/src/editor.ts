@@ -28,6 +28,7 @@ import { Node, type Element as SlateElement } from 'slate';
 import { VERSIONS } from './constants';
 import { parseMarkdownToDrawnix } from '@plait-board/markdown-to-drawnix';
 import { getMindmapAnkiCards, type MindmapAnkiCardNode } from './anki-cards';
+import { waitForPendingAnkiCardImages } from './anki-image-queue';
 import { findElementById } from './mind-tree';
 
 export {
@@ -69,6 +70,14 @@ export interface DrawnixEditor {
   updateMindmap(operations: MindmapOperation[]): void;
   /** Every node with Anki cards, depth-first in document order. */
   readAnkiCards(): MindmapAnkiCardNode[];
+  /**
+   * Resolves once every card image batch accepted so far has committed or been
+   * refused, or after `timeoutMs` (default 10 s). Hosts should await this
+   * before saving on close or switching documents: `onValueChange` fires only
+   * after a batch commits, so an image still being processed is otherwise not
+   * in the serialized document.
+   */
+  waitForPendingCardImages(timeoutMs?: number): Promise<void>;
 }
 
 export function createDrawnixEditor(board: PlaitBoard): DrawnixEditor {
@@ -77,6 +86,8 @@ export function createDrawnixEditor(board: PlaitBoard): DrawnixEditor {
     readMindmap: () => getMindmapOutline(board.children),
     updateMindmap: (operations) => applyMindmapOperations(board, operations),
     readAnkiCards: () => getMindmapAnkiCards(board.children),
+    waitForPendingCardImages: (timeoutMs?: number) =>
+      waitForPendingAnkiCardImages(board, timeoutMs),
   };
 }
 

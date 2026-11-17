@@ -1181,7 +1181,7 @@ describe('Anki card panel layout and images', () => {
       );
     });
 
-    it('drops images still processing when the panel closes', async () => {
+    it('still commits images the user added when the panel closes', async () => {
       const { editor, board, appState } = await twoCards();
       const undos = board.history.undos.length;
       const input = screen.getByTestId('drawnix-anki-image-input');
@@ -1193,8 +1193,39 @@ describe('Anki card panel layout and images', () => {
       });
       expect(appState.current?.openAnkiCardsId).toBeNull();
       await settle(() => release());
-      expect(editor.readAnkiCards()[0].cards[0].frontImages).toBeUndefined();
-      expect(board.history.undos).toHaveLength(undos);
+      // An image the user already gave the panel lands on its card even
+      // though the panel is closed; it is one undo step.
+      expect(editor.readAnkiCards()[0].cards[0].frontImages).toHaveLength(2);
+      expect(board.history.undos).toHaveLength(undos + 1);
+    });
+
+    it('lets the host wait for pending images before closing', async () => {
+      const { editor } = await twoCards();
+      const input = screen.getByTestId('drawnix-anki-image-input');
+      await settle(() =>
+        fireEvent.change(input, { target: { files: [png()] } })
+      );
+      let settled = false;
+      const wait = editor.waitForPendingCardImages().then(() => {
+        settled = true;
+      });
+      // The batch is held by the codec: the wait must not resolve yet.
+      await settle(() => undefined);
+      expect(settled).toBe(false);
+      await settle(() => release());
+      await wait;
+      expect(settled).toBe(true);
+      expect(editor.readAnkiCards()[0].cards[0].frontImages).toHaveLength(1);
+    });
+
+    it('bounds the host wait when a batch never settles', async () => {
+      const { editor } = await twoCards();
+      const input = screen.getByTestId('drawnix-anki-image-input');
+      await settle(() =>
+        fireEvent.change(input, { target: { files: [png()] } })
+      );
+      // Not released: the wait must still return within its bound.
+      await expect(editor.waitForPendingCardImages(20)).resolves.toBeUndefined();
     });
 
     it('keeps adding images on other cards while one card is processing', async () => {

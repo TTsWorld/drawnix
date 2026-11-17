@@ -172,6 +172,15 @@ document back through `value` after each change must pass the same array they
 got from `onValueChange`, not a copy, or every change counts as a new document.
 Remounting `<Drawnix>` (a React `key` per document) also works.
 
+**Pending card images.** Card images are processed asynchronously. A batch the
+panel accepted keeps running after the panel closes or shows another node: the
+image lands on the card it was added to, as one undo step, and is dropped only
+if the document was swapped or the target card no longer exists. Because
+`onValueChange` fires only when a batch commits, hosts must await
+`editor.waitForPendingCardImages()` (bounded, default 10 s) before flushing a
+save for close, window close, or a switch to another file, or an image the
+user just added can be missing from the saved document.
+
 The host owns storage, save scheduling, conflict detection, permissions, and
 any Agent transport. This package has no Stair, Electron, Project, or session
 dependency. Use `onViewportChange` and `onThemeChange` to persist presentation
@@ -182,6 +191,11 @@ changes as well.
 - `serialize(): string` — current native document, including notes and theme.
 - `readMindmap(): MindmapNode[]` — node IDs, topics, optional notes, and children.
 - `readAnkiCards(): MindmapAnkiCardNode[]` — every node with Anki cards (see above).
+- `waitForPendingCardImages(timeoutMs?): Promise<void>` — resolves once every
+  card image batch accepted so far has committed or been refused, or after
+  `timeoutMs` (default 10 s). Await it before saving on close or switching
+  documents: `onValueChange` fires only after a batch commits, so an image
+  still being processed is otherwise not in `serialize()` yet.
 - `updateMindmap(operations): void` — atomic batches of 1–50 operations, with one
   undo entry per batch. Supported operations: `populate_empty`, `set_topic`,
   `insert_child`, `insert_sibling`, and `set_note` (`nodeId`, `note`). An empty

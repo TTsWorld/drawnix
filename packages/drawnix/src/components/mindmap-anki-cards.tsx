@@ -32,6 +32,7 @@ import {
 } from '../anki-card-images';
 import { serializeDrawnixBoard } from '../editor';
 import { getDocumentGeneration } from '../plugins/with-document-swap';
+import { setPendingAnkiCardImageQueue } from '../anki-image-queue';
 import { useDrawnix } from '../hooks/use-drawnix';
 import { useI18n, type Translations } from '../i18n';
 import { ImageIcon, PlusIcon } from './icons';
@@ -204,9 +205,6 @@ export const MindmapAnkiCards = () => {
   // one after another.
   const [pendingCards, setPendingCards] = useState<string[]>([]);
   const imageQueue = useRef<Promise<void>>(Promise.resolve());
-  // Advances when the panel closes or shows another node; batches started
-  // before are dropped, so no undo step lands after the user moved on.
-  const imageEpoch = useRef(0);
   const [dragging, setDragging] = useState(false);
   const [preview, setPreview] = useState<{
     url: string;
@@ -244,7 +242,6 @@ export const MindmapAnkiCards = () => {
   };
 
   useEffect(() => {
-    imageEpoch.current++;
     lastInputOperation.current = null;
     setPendingFocus(null);
     setNotice(null);
@@ -258,6 +255,13 @@ export const MindmapAnkiCards = () => {
       setAppState((state) => ({ ...state, openAnkiCardsId: null }));
     }
   }, [node?.id, appState.openAnkiCardsId, setAppState]);
+
+  // Let the host wait for accepted batches before it closes or switches the
+  // board. Registered without a cleanup: the queue must stay reachable while
+  // the board is being torn down, so a flush during unmount still finds it.
+  useEffect(() => {
+    setPendingAnkiCardImageQueue(board, () => imageQueue.current);
+  }, [board]);
 
   // New cards and switched tabs render after Plait's asynchronous notification.
   useEffect(() => {
@@ -421,8 +425,12 @@ export const MindmapAnkiCards = () => {
 
   /**
    * Adds images to the side that is open now. Batches added while another is
-   * still processing are queued, never dropped. The target card is checked
-   * again before writing: it can be deleted or undone away meanwhile.
+   * still processing are queued, never dropped, and a batch keeps running
+   * after the panel closes or shows another node: an image the user already
+   * gave the panel must land on its card. It is dropped only when the
+   * document was swapped or the target card is gone when it commits. The
+   * target card is checked again before writing: it can be deleted or undone
+   * away meanwhile.
    */
   const addImages = (files: File[]) => {
     if (!node || !current || !files.length) return;
@@ -433,10 +441,8 @@ export const MindmapAnkiCards = () => {
       // A swapped-in document can hold the same node and card IDs.
       generation: getDocumentGeneration(board),
     };
-    const epoch = imageEpoch.current;
-    const cancelled = () => imageEpoch.current !== epoch;
     const notify = (value: Notice | null) => {
-      if (!cancelled()) setNotice(value && { ...value, cardId: target.cardId });
+      setNotice(value && { ...value, cardId: target.cardId });
     };
     setPendingCards((cards) => [...cards, target.cardId]);
     notify({ kind: 'status', text: t('anki.imagesAdding') });
@@ -444,14 +450,12 @@ export const MindmapAnkiCards = () => {
       const added: MindmapAnkiCardMedia[] = [];
       let failure: Notice | null = null;
       for (const file of files) {
-        if (cancelled()) return;
         try {
           added.push(await createAnkiCardImage(file, imageCodec));
         } catch (error) {
           failure ??= { kind: 'error', text: imageErrorText(error, t) };
         }
       }
-      if (cancelled()) return;
       if (getDocumentGeneration(board) !== target.generation) {
         setNotice({ kind: 'error', text: t('anki.imageDocumentSwitched') });
         return;
