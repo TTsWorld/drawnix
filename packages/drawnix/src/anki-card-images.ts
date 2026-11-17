@@ -77,9 +77,7 @@ export const browserImageCodec: AnkiImageCodec = {
     };
   },
   encode(image, width, height, type, quality) {
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
+    const canvas = createCanvas(width, height);
     const context = canvas.getContext('2d');
     if (!context) return Promise.reject(new Error('No canvas context'));
     if (type === 'image/jpeg') {
@@ -103,9 +101,7 @@ export const browserImageCodec: AnkiImageCodec = {
       image.height,
       ANKI_IMAGE_MAX_EDGE
     );
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
+    const canvas = createCanvas(width, height);
     const context = canvas.getContext('2d', { willReadFrequently: true });
     // Unknown: keep transparency to be safe.
     if (!context) return true;
@@ -125,6 +121,13 @@ export const browserImageCodec: AnkiImageCodec = {
     });
   },
 };
+
+function createCanvas(width: number, height: number): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
 
 export function isAcceptedImage(file: Blob): boolean {
   return ACCEPTED_TYPES.includes(file.type);
@@ -169,54 +172,11 @@ export async function createAnkiCardImage(
     throw new AnkiImageError('unreadable', 'The image could not be read');
   }
   try {
-    let blob: Blob | undefined;
-    let size = { width: image.width, height: image.height };
-    const withinLimits =
-      Math.max(image.width, image.height) <= ANKI_IMAGE_MAX_EDGE &&
-      file.size <= ANKI_IMAGE_MAX_BYTES;
-    if (withinLimits && file.type === 'image/gif') {
-      blob = file;
-    } else if (
-      withinLimits &&
-      (file.type === 'image/png' || file.type === 'image/webp')
-    ) {
-      const stripped = stripImageMetadata(
-        new Uint8Array(await file.arrayBuffer()),
-        file.type
-      );
-      if (stripped?.orientation === 1) {
-        blob = new Blob([stripped.bytes], { type: file.type });
-      }
-    }
-    // Each pass tries every size, largest first.
-    const passes: Encoding[][] =
-      file.type === 'image/jpeg'
-        ? [[['image/jpeg', 0.92], ...JPEG_ENCODINGS]]
-        : !blob && codec.hasTransparency?.(image)
-        ? [TRANSPARENT_ENCODINGS, JPEG_ENCODINGS]
-        : [ENCODINGS];
-    for (const encodings of blob ? [] : passes) {
-      for (const edge of SCALES) {
-        size = fit(image.width, image.height, edge);
-        for (const [type, quality] of encodings) {
-          const encoded = await codec.encode(
-            image,
-            size.width,
-            size.height,
-            type,
-            quality
-          );
-          // Browsers without a WebP encoder return PNG instead.
-          if (encoded.type === type && encoded.size <= ANKI_IMAGE_MAX_BYTES) {
-            blob = encoded;
-            break;
-          }
-        }
-        if (blob) break;
-      }
-      if (blob) break;
-    }
-    if (!blob) {
+    const kept = await keepOriginal(file, image);
+    const result = kept
+      ? { blob: kept, width: image.width, height: image.height }
+      : await reencode(file, image, codec);
+    if (!result) {
       throw new AnkiImageError(
         'too-large',
         'The image is too large even after compression'
@@ -224,10 +184,10 @@ export async function createAnkiCardImage(
     }
     return {
       id: createAnkiCardId(),
-      url: await codec.toDataUrl(blob),
-      mimeType: blob.type,
-      width: size.width,
-      height: size.height,
+      url: await codec.toDataUrl(result.blob),
+      mimeType: result.blob.type,
+      width: result.width,
+      height: result.height,
     };
   } catch (error) {
     if (error instanceof AnkiImageError) throw error;
@@ -237,22 +197,86 @@ export async function createAnkiCardImage(
   }
 }
 
+/**
+ * The file's own image data, when it is within the limits and can be stored
+ * without re-encoding: GIF as it is, PNG and WebP without metadata chunks
+ * (unless their EXIF rotates them).
+ */
+async function keepOriginal(
+  file: Blob,
+  image: DecodedImage
+): Promise<Blob | undefined> {
+  const withinLimits =
+    Math.max(image.width, image.height) <= ANKI_IMAGE_MAX_EDGE &&
+    file.size <= ANKI_IMAGE_MAX_BYTES;
+  if (!withinLimits) return undefined;
+  if (file.type === 'image/gif') return file;
+  if (file.type !== 'image/png' && file.type !== 'image/webp') {
+    return undefined;
+  }
+  const stripped = stripImageMetadata(
+    new Uint8Array(await file.arrayBuffer()),
+    file.type
+  );
+  if (stripped?.orientation !== 1) return undefined;
+  return new Blob([stripped.bytes], { type: file.type });
+}
+
+/**
+ * Draws and encodes the image until it fits ANKI_IMAGE_MAX_BYTES. Each pass
+ * tries every size, largest first, with each of its encodings. Returns
+ * `undefined` when nothing fits.
+ */
+async function reencode(
+  file: Blob,
+  image: DecodedImage,
+  codec: AnkiImageCodec
+): Promise<{ blob: Blob; width: number; height: number } | undefined> {
+  let passes: Encoding[][];
+  if (file.type === 'image/jpeg') {
+    passes = [[['image/jpeg', 0.92], ...JPEG_ENCODINGS]];
+  } else if (codec.hasTransparency?.(image)) {
+    passes = [TRANSPARENT_ENCODINGS, JPEG_ENCODINGS];
+  } else {
+    passes = [ENCODINGS];
+  }
+  for (const encodings of passes) {
+    for (const edge of SCALES) {
+      const { width, height } = fit(image.width, image.height, edge);
+      for (const [type, quality] of encodings) {
+        const blob = await codec.encode(image, width, height, type, quality);
+        // Browsers without a WebP encoder return PNG instead.
+        if (blob.type === type && blob.size <= ANKI_IMAGE_MAX_BYTES) {
+          return { blob, width, height };
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
 /** UTF-8 length of a string, without encoding it (documents reach MiBs). */
 export function getUtf8Size(text: string): number {
   let length = 0;
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i);
-    if (code < 0x80) length += 1;
-    else if (code < 0x800) length += 2;
-    else if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
-      const next = text.charCodeAt(i + 1);
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        length += 4;
-        i++;
-      } else length += 3;
-    } else length += 3;
+    if (code < 0x80) {
+      length += 1;
+    } else if (code < 0x800) {
+      length += 2;
+    } else if (isSurrogatePair(code, text.charCodeAt(i + 1))) {
+      // charCodeAt past the end is NaN, which is no low surrogate.
+      length += 4;
+      i++;
+    } else {
+      length += 3;
+    }
   }
   return length;
+}
+
+function isSurrogatePair(high: number, low: number): boolean {
+  return high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff;
 }
 
 /**

@@ -171,6 +171,8 @@ const exif = (orientation: number) => [
   0,
 ];
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
+const fileOf = (bytes: number[], type: string) =>
+  new File([new Uint8Array(bytes)], 'x', { type });
 
 /** Codec that records the stored bytes. */
 function storingCodec(width = 400, height = 300) {
@@ -205,10 +207,7 @@ describe('metadata of small PNG and WebP files', () => {
       ...pngChunk('IEND', []),
     ];
     const { value, encode, stored } = storingCodec();
-    const image = await createAnkiCardImage(
-      new File([new Uint8Array(bytes)], 'x', { type: 'image/png' }),
-      value
-    );
+    const image = await createAnkiCardImage(fileOf(bytes, 'image/png'), value);
     expect(encode).not.toHaveBeenCalled();
     expect(image).toMatchObject({
       mimeType: 'image/png',
@@ -239,10 +238,7 @@ describe('metadata of small PNG and WebP files', () => {
       webpChunk('XMP ', ascii('<x:xmpmeta/>')),
     ]);
     const { value, encode, stored } = storingCodec();
-    const image = await createAnkiCardImage(
-      new File([new Uint8Array(bytes)], 'x', { type: 'image/webp' }),
-      value
-    );
+    const image = await createAnkiCardImage(fileOf(bytes, 'image/webp'), value);
     expect(encode).not.toHaveBeenCalled();
     expect(image.mimeType).toBe('image/webp');
     expect(Array.from(stored.bytes ?? [])).toEqual(
@@ -259,10 +255,7 @@ describe('metadata of small PNG and WebP files', () => {
       ...pngChunk('IEND', []),
     ];
     const { value, encode } = storingCodec();
-    await createAnkiCardImage(
-      new File([new Uint8Array(bytes)], 'x', { type: 'image/png' }),
-      value
-    );
+    await createAnkiCardImage(fileOf(bytes, 'image/png'), value);
     expect(encode).toHaveBeenCalledTimes(1);
   });
 });

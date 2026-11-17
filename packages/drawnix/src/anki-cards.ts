@@ -92,17 +92,21 @@ export function parseAnkiTags(text: string): string[] {
 type StoredAnkiCard = Record<string, unknown> & { id: string };
 
 function isStoredAnkiCard(card: unknown): card is StoredAnkiCard {
-  return (
-    !!card &&
-    typeof card === 'object' &&
-    typeof (card as { id?: unknown }).id === 'string' &&
-    !!(card as { id: string }).id
-  );
+  if (!card || typeof card !== 'object') return false;
+  const { id } = card as { id?: unknown };
+  return typeof id === 'string' && id !== '';
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const IMAGE_DATA_URL =
   /^data:(image\/(?:png|jpeg|gif|webp));base64,[A-Za-z0-9+/]+={0,2}$/;
+
+/** A stored width or height, or 0 when it is not a positive number. */
+function readDimension(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : 0;
+}
 
 /** Whether an image ID has the UUID shape the panel creates. */
 export function isAnkiCardImageId(id: unknown): id is string {
@@ -118,13 +122,9 @@ export function getAnkiCardImages(value: unknown): MindmapAnkiCardMedia[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const result: MindmapAnkiCardMedia[] = [];
-  const number = (value: unknown) =>
-    typeof value === 'number' && Number.isFinite(value) && value > 0
-      ? value
-      : 0;
   for (const image of value) {
     if (!image || typeof image !== 'object') continue;
-    const { id, url } = image as Record<string, unknown>;
+    const { id, url, width, height } = image as Record<string, unknown>;
     if (!isAnkiCardImageId(id) || seen.has(id) || typeof url !== 'string') {
       continue;
     }
@@ -135,8 +135,8 @@ export function getAnkiCardImages(value: unknown): MindmapAnkiCardMedia[] {
       id,
       url,
       mimeType,
-      width: number((image as Record<string, unknown>).width),
-      height: number((image as Record<string, unknown>).height),
+      width: readDimension(width),
+      height: readDimension(height),
     });
   }
   return result;
@@ -157,7 +157,7 @@ export function getAnkiCards(
     const frontImages = getAnkiCardImages(card.frontImages);
     const backImages = getAnkiCardImages(card.backImages);
     return {
-      id: card.id as string,
+      id: card.id,
       front: typeof card.front === 'string' ? card.front : '',
       back: typeof card.back === 'string' ? card.back : '',
       ...(tags.length ? { tags } : {}),
@@ -196,23 +196,21 @@ export function getMindmapAnkiCards(
   forEachMindElement(normalizeAnkiCardIds(elements), (element) => {
     const cards = getAnkiCards(element);
     if (!cards.length) return;
-    const image = element.data?.image;
+    const image = getNodeImage(element);
     result.push({
       nodeId: element.id,
       topic: Node.string(element.data.topic),
-      ...(image && typeof image.url === 'string'
-        ? {
-            image: {
-              url: image.url,
-              width: image.width,
-              height: image.height,
-            },
-          }
-        : {}),
+      ...(image ? { image } : {}),
       cards,
     });
   });
   return result;
+}
+
+function getNodeImage(element: MindElement): MindmapAnkiCardImage | undefined {
+  const image = element.data?.image;
+  if (!image || typeof image.url !== 'string') return undefined;
+  return { url: image.url, width: image.width, height: image.height };
 }
 
 export function collectAnkiCardIds(elements: PlaitElement[], ids: Set<string>) {
@@ -273,10 +271,13 @@ export function prepareAnkiCardsForPaste(
         ankiCards: cards.map((card) => {
           // Malformed entries are left alone; readers skip them.
           if (!isStoredAnkiCard(card)) return card;
-          const keep = keepIds && !used.has(card.id);
-          const id = keep ? card.id : createAnkiCardId();
+          if (keepIds && !used.has(card.id)) {
+            used.add(card.id);
+            return card;
+          }
+          const id = createAnkiCardId();
           used.add(id);
-          return keep ? card : { ...card, id };
+          return { ...card, id };
         }),
       };
     }
@@ -335,11 +336,15 @@ export function deriveAnkiCardId(
   const hex = hash128(`anki-card\u0000${nodeId}\u0000${cardId}\u0000${attempt}`)
     .map((value) => value.toString(16).padStart(8, '0'))
     .join('');
+  const version = '8';
   const variant = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(
-    13,
-    16
-  )}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    version + hex.slice(13, 16),
+    variant + hex.slice(17, 20),
+    hex.slice(20, 32),
+  ].join('-');
 }
 
 export interface AnkiCardIdFix {
@@ -373,9 +378,11 @@ export function findDuplicateAnkiCardIds(
             return card;
           }
           let attempt = 0;
-          let id: string;
-          do id = deriveAnkiCardId(String(element.id), card.id, attempt++);
-          while (seen.has(id));
+          let id = deriveAnkiCardId(String(element.id), card.id, attempt);
+          while (seen.has(id)) {
+            attempt++;
+            id = deriveAnkiCardId(String(element.id), card.id, attempt);
+          }
           seen.add(id);
           changed = true;
           return { ...card, id };
@@ -401,12 +408,11 @@ export function normalizeAnkiCardIds(elements: PlaitElement[]): PlaitElement[] {
   ): PlaitElement[] =>
     list.map((element, index) => {
       if (index !== path[0]) return element;
-      return path.length === 1
-        ? { ...element, ankiCards }
-        : {
-            ...element,
-            children: apply(element.children ?? [], path.slice(1), ankiCards),
-          };
+      if (path.length === 1) return { ...element, ankiCards };
+      return {
+        ...element,
+        children: apply(element.children ?? [], path.slice(1), ankiCards),
+      };
     });
   return fixes.reduce(
     (result, fix) => apply(result, fix.path, fix.ankiCards),

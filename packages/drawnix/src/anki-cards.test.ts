@@ -61,6 +61,12 @@ function setCards(board: PlaitBoard, path: number[], cards: unknown[]) {
   });
 }
 
+/** Card IDs as the read API returns them, in document order. */
+const idsOf = (elements: PlaitElement[]) =>
+  getMindmapAnkiCards(elements).flatMap((node) =>
+    node.cards.map((item) => item.id)
+  );
+
 describe('Anki card data', () => {
   it('creates distinct UUID-shaped card IDs', () => {
     const ids = new Set(Array.from({ length: 200 }, createAnkiCardId));
@@ -178,11 +184,6 @@ describe('Anki card data', () => {
 });
 
 describe('Anki card IDs on paste', () => {
-  const idsOf = (elements: PlaitElement[]) =>
-    getMindmapAnkiCards(elements).flatMap((node) =>
-      node.cards.map((item) => item.id)
-    );
-
   it('renews copied IDs recursively and within one paste', () => {
     const { board } = setup();
     setCards(board, [0, 0], [card('a1'), card('a2')]);
@@ -508,9 +509,7 @@ describe('duplicate card IDs in a document', () => {
   it('returns unique IDs from the read API without changing the input', () => {
     const elements = dupDocument();
     const before = JSON.stringify(elements);
-    const ids = getMindmapAnkiCards(elements).flatMap((node) =>
-      node.cards.map((item) => item.id)
-    );
+    const ids = idsOf(elements);
     expect(ids).toHaveLength(5);
     expect(new Set(ids).size).toBe(5);
     expect(JSON.stringify(elements)).toBe(before);
@@ -539,10 +538,12 @@ describe('duplicate card IDs in a document', () => {
     });
     board.afterChange();
     await flush();
+    // Stored IDs of the root, read raw rather than through the read API,
+    // which would resolve duplicates itself.
+    const rootIds = () =>
+      board.children[0].ankiCards.map((c: { id: string }) => c.id);
     const derived = deriveAnkiCardId(board.children[0].id, 'x', 0);
-    expect(
-      board.children[0].ankiCards.map((c: { id: string }) => c.id)
-    ).toEqual(['x', derived]);
+    expect(rootIds()).toEqual(['x', derived]);
     board.undo();
     board.afterChange();
     await flush();
@@ -550,9 +551,7 @@ describe('duplicate card IDs in a document', () => {
     board.redo();
     board.afterChange();
     await flush();
-    expect(
-      board.children[0].ankiCards.map((c: { id: string }) => c.id)
-    ).toEqual(['x', derived]);
+    expect(rootIds()).toEqual(['x', derived]);
   });
 });
 

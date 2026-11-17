@@ -1,5 +1,12 @@
 import type { PlaitBoard } from '@plait/core';
 
+const STATE = new WeakMap<
+  PlaitBoard,
+  { children: PlaitBoard['children']; generation: number }
+>();
+// Separate from STATE: plugins registered earlier subscribe before this one runs.
+const LISTENERS = new WeakMap<PlaitBoard, Array<() => void>>();
+
 /**
  * Detects a document swap: `board.children` replaced without an operation,
  * as react-board's Wrapper does when the host passes a new `value`, and as
@@ -16,13 +23,6 @@ import type { PlaitBoard } from '@plait/core';
  * Register it last, so that its checks run before every other plugin's
  * `apply`, `undo`, `redo` and `insertFragment`.
  */
-const STATE = new WeakMap<
-  PlaitBoard,
-  { children: PlaitBoard['children']; generation: number }
->();
-// Separate from STATE: plugins registered earlier subscribe before this one runs.
-const LISTENERS = new WeakMap<PlaitBoard, Array<() => void>>();
-
 export const withDocumentSwap = (board: PlaitBoard) => {
   const { apply, undo, redo, insertFragment } = board;
   STATE.set(board, { children: board.children, generation: 0 });

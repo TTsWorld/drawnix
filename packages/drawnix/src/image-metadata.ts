@@ -103,18 +103,19 @@ function stripWebp(bytes: Uint8Array): StrippedImage | null {
   while (offset + 8 <= riffEnd) {
     const type = fourCC(bytes, offset);
     const size = view.getUint32(offset + 4, true);
-    const end = offset + 8 + size + (size % 2);
-    if (offset + 8 + size > riffEnd) return null;
+    const dataEnd = offset + 8 + size;
+    if (dataEnd > riffEnd) return null;
+    // Chunks are padded to an even size; the last pad byte may be missing.
+    const end = dataEnd + (size % 2);
+    const chunkEnd = Math.min(end, riffEnd);
     if (type === 'VP8X') {
-      const chunk = bytes.slice(offset, Math.min(end, riffEnd));
+      const chunk = bytes.slice(offset, chunkEnd);
       chunk[8] &= ~(VP8X_EXIF_FLAG | VP8X_XMP_FLAG);
       kept.push(chunk);
     } else if (WEBP_KEPT_CHUNKS.has(type)) {
-      kept.push(bytes.subarray(offset, Math.min(end, riffEnd)));
+      kept.push(bytes.subarray(offset, chunkEnd));
     } else if (type === 'EXIF') {
-      orientation = readExifOrientation(
-        bytes.subarray(offset + 8, offset + 8 + size)
-      );
+      orientation = readExifOrientation(bytes.subarray(offset + 8, dataEnd));
     }
     offset = end;
   }

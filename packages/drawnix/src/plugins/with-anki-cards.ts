@@ -23,9 +23,9 @@ import { onDocumentSwap } from './with-document-swap';
  *   cut into another board, another window or after a reload renews the
  *   IDs like a copy. So does pasting after the host swapped the document
  *   on this board (withDocumentSwap clears the history). A cut's IDs
- *   therefore never leave the document they were made in, so no undo, redo or older history step of either document
- *   can make two documents share an Anki GUID, and nothing has to be shared
- *   between boards or stored.
+ *   therefore never leave the document they were made in, so no undo, redo
+ *   or older history step of either document can make two documents share
+ *   an Anki GUID, and nothing has to be shared between boards or stored.
  * - Duplicate card IDs in the document (older data, upstream Drawnix,
  *   host edits, undo/redo across a move) are repaired after loading and
  *   after every change, without adding an undo step. See
@@ -111,17 +111,7 @@ export const withAnkiCards = (board: PlaitBoard) => {
     afterChange();
     // Panning, zooming and selecting change no elements: skip the full scan.
     const { operations } = board;
-    if (
-      operations?.length &&
-      operations.every(
-        (operation) =>
-          PlaitOperation.isSetViewportOperation(operation) ||
-          PlaitOperation.isSetSelectionOperation(operation) ||
-          PlaitOperation.isSetThemeOperation(operation)
-      )
-    ) {
-      return;
-    }
+    if (operations?.length && operations.every(changesNoElements)) return;
     scheduleRepair();
   };
   // Documents passed in at creation have no change notification.
@@ -135,6 +125,14 @@ export const withAnkiCards = (board: PlaitBoard) => {
   });
   return board;
 };
+
+function changesNoElements(operation: PlaitOperation): boolean {
+  return (
+    PlaitOperation.isSetViewportOperation(operation) ||
+    PlaitOperation.isSetSelectionOperation(operation) ||
+    PlaitOperation.isSetThemeOperation(operation)
+  );
+}
 
 /**
  * Writes the repair of duplicate card IDs back to the document. It is not

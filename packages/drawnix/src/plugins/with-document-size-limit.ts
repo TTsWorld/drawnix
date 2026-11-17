@@ -49,9 +49,7 @@ export const withDocumentSizeLimit = (board: PlaitBoard) => {
     } finally {
       board.apply = apply;
     }
-    if (!applied.some((operation) => operation.type !== 'set_selection')) {
-      return;
-    }
+    if (applied.every(PlaitOperation.isSetSelectionOperation)) return;
     const size = getDocumentSize(board);
     if (size <= DOCUMENT_SIZE_LIMIT) return;
 
