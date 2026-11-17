@@ -1205,27 +1205,77 @@ describe('Anki card panel layout and images', () => {
       await settle(() =>
         fireEvent.change(input, { target: { files: [png()] } })
       );
-      let settled = false;
-      const wait = editor.waitForPendingCardImages().then(() => {
-        settled = true;
+      let result: string | undefined;
+      const wait = editor.waitForPendingCardImages().then((value) => {
+        result = value;
       });
       // The batch is held by the codec: the wait must not resolve yet.
       await settle(() => undefined);
-      expect(settled).toBe(false);
+      expect(result).toBeUndefined();
       await settle(() => release());
       await wait;
-      expect(settled).toBe(true);
+      expect(result).toBe('idle');
       expect(editor.readAnkiCards()[0].cards[0].frontImages).toHaveLength(1);
     });
 
-    it('bounds the host wait when a batch never settles', async () => {
+    it('bounds the host wait when a batch never settles and reports timeout', async () => {
       const { editor } = await twoCards();
       const input = screen.getByTestId('drawnix-anki-image-input');
       await settle(() =>
         fireEvent.change(input, { target: { files: [png()] } })
       );
-      // Not released: the wait must still return within its bound.
-      await expect(editor.waitForPendingCardImages(20)).resolves.toBeUndefined();
+      // Not released: the wait must still return within its bound as timeout.
+      await expect(editor.waitForPendingCardImages(20)).resolves.toBe(
+        'timeout'
+      );
+    });
+
+    it('keeps committed images in serialize after the panel unmounts', async () => {
+      const { editor, appState } = await twoCards();
+      const input = screen.getByTestId('drawnix-anki-image-input');
+      await settle(() =>
+        fireEvent.change(input, { target: { files: [png()] } })
+      );
+      // Close the panel (unmount MindmapAnkiCards). onValueChange may already
+      // be detached in a host teardown; serialize must still see the commit.
+      await act(async () => {
+        fireEvent.keyDown(field('卡片 1 正面'), { key: 'Escape' });
+      });
+      expect(appState.current?.openAnkiCardsId).toBeNull();
+      const waiting = editor.waitForPendingCardImages();
+      await settle(() => release());
+      await expect(waiting).resolves.toBe('idle');
+      expect(editor.readAnkiCards()[0].cards[0].frontImages).toHaveLength(1);
+      // serialize() reads board.children directly — works even if onValueChange
+      // was detached during host teardown.
+      expect(editor.serialize()).toContain('data:image/png;base64,AAAA');
+    });
+
+    it('stops decoding remaining files once the document generation changes', async () => {
+      const { editor, board } = await twoCards();
+      withDocumentSwap(board);
+      let decodeCount = 0;
+      setAnkiImageCodecForTesting({
+        ...fakeCodec,
+        decode: async (file) => {
+          decodeCount += 1;
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return fakeCodec.decode(file);
+        },
+      });
+      const input = screen.getByTestId('drawnix-anki-image-input');
+      await settle(() =>
+        fireEvent.change(input, { target: { files: [png(), png()] } })
+      );
+      expect(decodeCount).toBe(1);
+      board.children = JSON.parse(JSON.stringify(board.children));
+      fakeNodeWeakMap(board);
+      await settle(() => release());
+      // Second file must not be decoded after the swap.
+      expect(decodeCount).toBe(1);
+      expect(editor.readAnkiCards()[0].cards[0].frontImages).toBeUndefined();
     });
 
     it('keeps adding images on other cards while one card is processing', async () => {

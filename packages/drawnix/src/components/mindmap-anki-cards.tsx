@@ -450,6 +450,12 @@ export const MindmapAnkiCards = () => {
       const added: MindmapAnkiCardMedia[] = [];
       let failure: Notice | null = null;
       for (const file of files) {
+        // Stop early when the host swapped documents: remaining files in this
+        // batch belong to the old generation and must not block a new one.
+        if (getDocumentGeneration(board) !== target.generation) {
+          setNotice({ kind: 'error', text: t('anki.imageDocumentSwitched') });
+          return;
+        }
         try {
           added.push(await createAnkiCardImage(file, imageCodec));
         } catch (error) {

@@ -28,7 +28,10 @@ import { Node, type Element as SlateElement } from 'slate';
 import { VERSIONS } from './constants';
 import { parseMarkdownToDrawnix } from '@plait-board/markdown-to-drawnix';
 import { getMindmapAnkiCards, type MindmapAnkiCardNode } from './anki-cards';
-import { waitForPendingAnkiCardImages } from './anki-image-queue';
+import {
+  waitForPendingAnkiCardImages,
+  type PendingCardImagesWaitResult,
+} from './anki-image-queue';
 import { findElementById } from './mind-tree';
 
 export {
@@ -39,6 +42,7 @@ export {
   type MindmapAnkiCardSide,
   type MindmapAnkiCardNode,
 } from './anki-cards';
+export type { PendingCardImagesWaitResult } from './anki-image-queue';
 
 export interface DrawnixDocument {
   type: 'drawnix';
@@ -72,12 +76,18 @@ export interface DrawnixEditor {
   readAnkiCards(): MindmapAnkiCardNode[];
   /**
    * Resolves once every card image batch accepted so far has committed or been
-   * refused, or after `timeoutMs` (default 10 s). Hosts should await this
-   * before saving on close or switching documents: `onValueChange` fires only
-   * after a batch commits, so an image still being processed is otherwise not
-   * in the serialized document.
+   * refused, or after `timeoutMs` (default 10 s). Returns `'idle'` when the
+   * queue is clear, `'timeout'` when the bound elapsed with work still pending.
+   * Hosts should await this before saving on close or switching documents:
+   * `onValueChange` fires only after a batch commits, so an image still being
+   * processed is otherwise not in the serialized document. After the wait,
+   * call `serialize()` again — committed images are on the board even if
+   * `onValueChange` was detached during unmount. On `'timeout'`, save what is
+   * there and warn the user.
    */
-  waitForPendingCardImages(timeoutMs?: number): Promise<void>;
+  waitForPendingCardImages(
+    timeoutMs?: number
+  ): Promise<PendingCardImagesWaitResult>;
 }
 
 export function createDrawnixEditor(board: PlaitBoard): DrawnixEditor {

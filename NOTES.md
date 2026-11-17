@@ -179,7 +179,13 @@ if the document was swapped or the target card no longer exists. Because
 `onValueChange` fires only when a batch commits, hosts must await
 `editor.waitForPendingCardImages()` (bounded, default 10 s) before flushing a
 save for close, window close, or a switch to another file, or an image the
-user just added can be missing from the saved document.
+user just added can be missing from the saved document. The wait returns
+`'idle'` when every accepted batch settled, or `'timeout'` when the bound
+elapsed with work still pending — on timeout, save what `serialize()` already
+has and warn the user. After the wait (and after unmount), call `serialize()`
+again rather than relying only on a snapshot from `onValueChange`: a batch
+accepted before close still commits onto the board, but the change callback
+may already have been detached.
 
 The host owns storage, save scheduling, conflict detection, permissions, and
 any Agent transport. This package has no Stair, Electron, Project, or session
@@ -191,11 +197,13 @@ changes as well.
 - `serialize(): string` — current native document, including notes and theme.
 - `readMindmap(): MindmapNode[]` — node IDs, topics, optional notes, and children.
 - `readAnkiCards(): MindmapAnkiCardNode[]` — every node with Anki cards (see above).
-- `waitForPendingCardImages(timeoutMs?): Promise<void>` — resolves once every
-  card image batch accepted so far has committed or been refused, or after
-  `timeoutMs` (default 10 s). Await it before saving on close or switching
-  documents: `onValueChange` fires only after a batch commits, so an image
-  still being processed is otherwise not in `serialize()` yet.
+- `waitForPendingCardImages(timeoutMs?): Promise<'idle' | 'timeout'>` — resolves
+  once every card image batch accepted so far has committed or been refused,
+  or after `timeoutMs` (default 10 s). Returns `'idle'` when the queue is
+  clear, `'timeout'` when the bound elapsed with work still pending. Await it
+  before saving on close or switching documents, then call `serialize()` for
+  the value to persist: `onValueChange` fires only after a batch commits, and
+  may already be detached after unmount even though the board holds the image.
 - `updateMindmap(operations): void` — atomic batches of 1–50 operations, with one
   undo entry per batch. Supported operations: `populate_empty`, `set_topic`,
   `insert_child`, `insert_sibling`, and `set_note` (`nodeId`, `note`). An empty

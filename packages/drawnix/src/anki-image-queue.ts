@@ -17,21 +17,33 @@ export function setPendingAnkiCardImageQueue(
 }
 
 /**
+ * Whether every accepted card-image batch settled within the wait bound
+ * (`idle`), or the bound elapsed while work was still in flight (`timeout`).
+ * Hosts must treat `timeout` as "save what is there and warn" — not as success.
+ */
+export type PendingCardImagesWaitResult = 'idle' | 'timeout';
+
+/**
  * Resolves once every card image batch accepted so far has committed, been
  * refused, or `timeoutMs` has passed — the wait is bounded, so closing a board
  * never hangs on a stuck codec. A batch that refuses (document swapped, target
  * card deleted, over budget) also settles the queue.
+ *
+ * Returns `'idle'` when the queue is clear, `'timeout'` when the bound elapsed
+ * with work still pending. Callers that serialize after this wait still get
+ * whatever already committed on the board (including after `onValueChange` was
+ * detached on unmount).
  */
 export async function waitForPendingAnkiCardImages(
   board: PlaitBoard,
   timeoutMs = PENDING_ANKI_CARD_IMAGE_WAIT_MS
-): Promise<void> {
+): Promise<PendingCardImagesWaitResult> {
   const getQueue = QUEUES.get(board);
-  if (!getQueue) return;
+  if (!getQueue) return 'idle';
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const queue = getQueue();
-    if (!queue) return;
+    if (!queue) return 'idle';
     const settled = await Promise.race([
       queue.then(
         () => true,
@@ -39,9 +51,12 @@ export async function waitForPendingAnkiCardImages(
       ),
       delay(Math.max(0, deadline - Date.now())).then(() => false),
     ]);
-    // Timed out, or a later batch was chained while we waited: stop at the
-    // bound either way; otherwise follow the chain once more.
-    if (!settled || getQueue() === queue || Date.now() >= deadline) return;
+    // Timed out: tell the host so it can save what committed and warn.
+    if (!settled) return 'timeout';
+    // Queue cleared, or the bound is exhausted after a settle: idle.
+    // A later batch may have been chained while we waited — follow it while
+    // time remains.
+    if (getQueue() === queue || Date.now() >= deadline) return 'idle';
   }
 }
 
